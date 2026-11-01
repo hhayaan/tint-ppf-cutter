@@ -17,6 +17,14 @@ def job(*paths, **options):
 
 
 class PrintingPanelingTests(unittest.TestCase):
+    def test_positioned_input_is_rejected_instead_of_silently_renormalized(self):
+        source=job(((0,0),(15,0)),position_mode="manual",offset_x_mm=2,offset_y_mm=3)
+        with self.assertRaisesRegex(PanelingError,"zero position offsets"):
+            split_panels(source,PanelOptions(10,5))
+        # Valid saved manual settings do not move an origin-positioned job.
+        origin=job(((0,0),(15,0)),position_mode="origin",offset_x_mm=2,offset_y_mm=3)
+        self.assertEqual(len(split_panels(origin,PanelOptions(10,5))),2)
+
     def test_contained_path_is_exact_and_page_size_is_distinct_from_artwork(self):
         source = job(((0, 0), (4, 0), (4, 3), (0, 0)))
         panel, = split_panels(source, PanelOptions(10, 8))

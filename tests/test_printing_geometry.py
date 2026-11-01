@@ -85,6 +85,45 @@ class PrintingGeometryTests(unittest.TestCase):
         self.assertEqual(job.preview_data(),prepare_job(source,job.options).preview_data())
         json.dumps(job.preview_data(),allow_nan=False)
 
+    def test_manual_position_translates_whole_copy_and_weed_layout(self):
+        source=pattern(square(100,200))
+        original=prepare_job(source,JobOptions(1,copies=2,copy_columns=2,copy_spacing_mm=3,weed_border_mm=2,passes=2))
+        placed=prepare_job(source,replace(original.options,position_mode='manual',offset_x_mm=7,offset_y_mm=11))
+        self.assertEqual((placed.width_mm,placed.height_mm),(original.width_mm,original.height_mm))
+        self.assertEqual(placed.bounds_mm,(7,11,7+original.width_mm,11+original.height_mm))
+        self.assertEqual(placed.source_bounds,original.source_bounds)
+        self.assertEqual(placed.total_length_mm,original.total_length_mm)
+        for before,after in zip(original.polylines,placed.polylines):
+            self.assertEqual(after.points_mm,tuple((x+7,y+11) for x,y in before.points_mm))
+            self.assertEqual((before.closed,before.role,before.copy_index,before.pass_index),
+                             (after.closed,after.role,after.copy_index,after.pass_index))
+        self.assertEqual(placed.preview_data()['applied_offset_mm'],[7,11])
+
+    def test_origin_position_ignores_retained_valid_manual_offsets(self):
+        source=pattern(square(100,200))
+        original=prepare_job(source,JobOptions(1))
+        origin=prepare_job(source,JobOptions(1,position_mode='origin',offset_x_mm=50,offset_y_mm=60))
+        self.assertEqual(origin.bounds_mm,original.bounds_mm)
+        self.assertEqual(origin.polylines,original.polylines)
+
+    def test_manual_position_media_checks_use_absolute_right_and_top_edges(self):
+        source=pattern(square())
+        options=JobOptions(1,position_mode='manual',offset_x_mm=5,offset_y_mm=8,media_width_mm=15,media_height_mm=18)
+        job=prepare_job(source,options)
+        self.assertEqual(job.bounds_mm,(5,8,15,18))
+        self.assertEqual((job.width_mm,job.height_mm),(10,10))
+        for changed in (replace(options,media_width_mm=14.99),replace(options,media_height_mm=17.99)):
+            with self.subTest(options=changed),self.assertRaisesRegex(GeometryError,'exceeds media'):
+                prepare_job(source,changed)
+
+    def test_manual_position_values_and_unestablished_design_mode_are_rejected(self):
+        for value in (-1,float('nan'),float('inf'),True):
+            for key in ('offset_x_mm','offset_y_mm'):
+                with self.subTest(key=key,value=value),self.assertRaises(GeometryError):
+                    prepare_job(pattern(square()),JobOptions(1,position_mode='manual',**{key:value}))
+        with self.assertRaisesRegex(GeometryError,'design-position'):
+            prepare_job(pattern(square()),JobOptions(1,position_mode='design'))
+
     def test_selecting_paths_preserves_all_subpaths_and_rejects_bad_selections(self):
         source=pattern(square(),square(20,0,2,group=4))
         job=prepare_job(source,JobOptions(1,selected_path_indices=(1,)))

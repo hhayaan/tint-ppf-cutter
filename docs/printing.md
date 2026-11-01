@@ -13,19 +13,50 @@ All **344/344** profiles passed the final source-bound rectangle capture sweep: 
 ## Implemented workflow
 
 - Select decoded source paths, or create a synthetic millimeter rectangle.
-- Supply a physical conversion or known unrotated selected width for a pattern. No FDU/FDA physical unit is silently assumed.
+- Use supported complete FDA/FDU patterns at their original size, automatically at 100%. The recovered coordinate unit is a PostScript point, converted with `25.4/72` mm per source unit. Unknown formats/versions and partial geometry do not receive this automatic scale. See [native pattern-size evidence](pattern-units.md).
 - Adaptively flatten cubic curves to an explicit millimeter tolerance. Preserve subpaths and groups. Reject partial/invalid/over-budget geometry instead of omitting it. Endpoint equality establishes closure; opaque source flags do not.
-- Apply scale, quarter-turn rotation, mirrors, copy grid/spacing, passes, and a global weed border. Order paths in source order or by start/end distance, optionally respecting actual contour containment for inner-first cutting. This is not automatic packing/nesting.
-- Validate geometry against supplied media, generate original native model commands, and show both logical dimensions and actual native coordinate bounds.
+- Optionally use advanced custom calibration or explicitly enable resizing for the current job. Apply quarter-turn rotation, mirrors, copy grid/spacing, passes, and a global weed border. Order paths in source order or by start/end distance, optionally respecting actual contour containment for inner-first cutting. This is not automatic packing/nesting.
+- Start at the cutter origin or apply positive Start X/Y offsets to the complete layout. Validate actual placed geometry against supplied media, generate original native model commands, and show both logical dimensions and actual native coordinate bounds.
 - Optionally clip an oversized calibrated layout into manually selected media-sized pages, with explicit overlap. Prepare and review one page per output attempt.
 - Review the job and destination, then save or explicitly send once. Any input change invalidates the reviewed payload. A new attempt requires new preparation.
 - Capture delivery byte counts, partial failures, cancellation and cleanup details in ignored `output/jobs/` logs. Never automatically retry or switch transport after an uncertain delivery.
 
 The adapter supports explicit native speed/force/acceleration overrides and tool selection through each model's virtual methods. These are native driver units. Blank fields add no override; initialization can still emit model defaults. A method returning success is not evidence that a specific device accepted every condition.
 
+## Size, loaded media and saved setup
+
+Normal pattern cutting uses **Original pattern size (automatic)**. It does not ask for a conversion or resize a vehicle pattern to fit the roll. **Advanced size / quality** contains custom calibration, known-width calibration and **Resize this job** for intentional exceptions. These geometry choices reset for the next job. The unit conversion is established from the original serializer, size calculation, cutter conversion and matching original UI dimensions; physical cutter performance remains unverified.
+
+The initial media mode is **roll**; saved setup can restore a different mode. A device destination needs the actual usable width; available length can be blank for a roll. Entering a length adds a limit. **Sheet** mode and manual paneling require both dimensions. An oversized layout is rejected or deliberately split into pages, without automatic shrinking. The Graphtec backend also checks the selected model's maximum width. Native emitted-coordinate bounds must fit the supplied media; the artwork's size alone is insufficient.
+
+**Save cutter setup**, and a successful job preparation, save the selected model, runtime folder, transport details, roll/sheet media and tool settings to ignored `.runtime/cut-settings.json`. Setup is separate for each exact profile and the last saved model is restored. Loading setup does not enumerate, open or send to a device. The stored media still needs to match the current load. JSON is whitelisted and atomically replaced; unreadable or malformed settings produce a visible error. Source files, selected paths, calibration/resizing, copies, manual offsets and page selection are not saved across jobs.
+
+Native axes are locked to each profile's captured mode. Return-to-origin stays enabled, and unverified non-return/feed modes are unavailable. Positive manual offsets are supported; preservation of the original design's absolute position is still pending. Manual panels require zero offsets and a fresh operator-selected origin for each page.
+
+Generated-job metadata records the source-unit conversion/provenance, applied job scale and media mode. The offline CLI also writes an adjacent `.plt.json` receipt containing geometry, source units, native metadata and delivery details. A raw `.plt` file alone does not carry those explanatory units.
+
+## Original cut-function parity
+
+The table distinguishes public documentation, observed original UI and static native analysis from functionality in this build. Original UI observations describe this installation, rather than factory defaults for every model. Private screenshots/accessibility snapshots and REA JSON remain under ignored `analysis/`; the [pattern-size evidence](pattern-units.md) and [source-bound profile report](printing-native-verification.json) publish the relevant method and result summaries.
+
+| Area | Original evidence | Implemented | Pending or limited |
+| --- | --- | --- | --- |
+| Physical size | Original UI showed 100% size; serializer and cutter functions establish points. | Automatic original-size conversion for admitted native patterns; advanced per-job override. | Unknown formats/partial drawings stay blocked; physical output still needs testing. |
+| Selected pieces | The [cutting manual](https://filmvinyldesigns.notion.site/Cutting-Patterns-1215fa01383980e0af23dec80bf1c2cb) requires checking intended parts before output. | Explicit multiple-path selection and prepared-job preview. | Path list initially selects all; original graphical part-selection behavior is not fully reproduced. |
+| Device/setup | [Plotter setup](https://filmvinyldesigns.notion.site/Plotter-Setup-1135fa01383980bab5d2fd1b7da876e2) describes reusable model/connection setup; native configuration reads saved preferences. | Last model plus per-profile connection, media, runtime and tools. | Original named media presets and all advanced preferences are not reproduced. |
+| Media and fitting | Original UI exposes roll mode, width/length and stored sizes; the [workspace manual](https://filmvinyldesigns.notion.site/The-Software-Interface-1195fa01383980ea9424f83af78dbea6) identifies roll/feed dimensions. | Roll width with optional length; sheets use both limits; overflow never silently changes scale. | No automatic media sensing or alignment. |
+| Placement | Observed UI offers origin, design-position and manual-position choices. | Cutter-origin placement and positive X/Y offsets with placed-bounds checks. | Keep-design-position semantics and original offset parity need further comparison. |
+| Tool conditions | Original UI has separate host-control choices; native code maps model condition values. | Optional native-unit speed/force/acceleration and tool calls. | Original user-value mapping, full model ranges and physical acceptance are not established. |
+| Curves and order | Native resolution mapping has five levels; the manual documents ordering and direction controls. | Adaptive curve tolerance, source/start-nearest/end-nearest ordering and optional inner-first constraints. | Exact native flattening/order equivalence and unidirectional mode remain pending. |
+| Pages and sequence | The manual describes page selection, offsets, pauses and continuation. | One explicitly selected manual panel at a time, with overlap and separate review/output. | All-page sequencing, continuation, row/column pauses and feed remain pending. |
+| End behavior and repeat | The manual describes retained jobs and origin/continuation choices; native analysis exposed extra travel in the alternate end mode. | Captured axes and return-to-origin locked; each new attempt requires preparation. | Retained-job workflow, initial pause and alternate end behavior are not implemented. |
+| Other production output | Original UI exposes crop-mark and printing areas. | Ordinary unregistered cut paths plus the listed explicit transports. | Optical registration, vendor-specific/Data Link USB, device status and graphics/page printing remain incomplete. |
+
+REA/Ghidra source anchors include `gslibcad62!TTrajecte::Llegir` (RVA `0x5da30`), `fdthmb40!FD_GetPatternSize` (`0x1c30`), `gsfwkcut62!TConfigDriverTall::TConfigDriverTall` (`0x52e0`), `TDriverTall::MapResolucioTall` (`0xb850`), and the native page begin/end functions. Their meaning is constrained by the tested artifact hashes and capture gate; naming a native option does not establish that its full workflow has been reimplemented.
+
 ## Manual paneling
 
-Enter the usable media width and length, open **Manual paneling**, enable it, and choose a page number starting at 1. These media dimensions define the clipping page; the full layout can exceed them. Overlap repeats tool paths in shared areas. Page numbers use a stable row-major grid, and a blank selected page is rejected without compiling or sending a job.
+Enter the usable media width and length, set Start X/Y to zero, open **Manual paneling**, enable it, and choose a page number starting at 1. These media dimensions define the clipping page; the full layout can exceed them. Overlap repeats tool paths in shared areas. Page numbers use a stable row-major grid, and a blank selected page is rejected without compiling or sending a job.
 
 Prepare the selected page, inspect its page number, geometry, actual native coordinate bounds and destination, then save or send that page once. **Previous page** and **Next page** only change the selected number and invalidate the generated job. Each page needs its own preparation, review and output attempt; File output needs a new filename. The operator positions the media and origin. Automatic page advancement, continuation and pause sequences are not implemented, and this clipping workflow does not establish byte parity with the original paneling system.
 
@@ -34,7 +65,7 @@ The dialog keeps Prepare, Send and status controls in a fixed footer while the f
 ## How the original functionality is reused
 
 ```text
-decoded complete pattern + explicit calibration
+decoded complete native pattern + established units (or explicit advanced override)
     -> Python geometry planner (millimeters)
     -> isolated x86 C# helper
     -> original model factory -> native configuration -> native plotter
@@ -95,7 +126,7 @@ The output filename must be new. Share this small optional ZIP privately with th
 
 Beyond the manual page clipping and selection above, the original manual describes automated page continuation and pauses, cut-mode choices, retained jobs, unidirectional cutting, and additional axes/control/enhancement settings. Optical registration, sheet cutting/page feed, device polling/status and ordinary graphics/page printing also require separate implementation and verification. These workflows remain incomplete.
 
-Pattern decoding still marks 343 assets as partial; these cannot enter the cutting planner. Full raw-file preservation does not establish support for every drawing record. Physical source scale still needs an external dimensional reference.
+Pattern decoding still marks 343 assets as partial; these cannot enter the cutting planner. Full raw-file preservation does not establish support for every drawing record. The native source-unit convention is established; vehicle-specific fit and actual machine output remain separate checks.
 
 The current build is suitable for **file inspection and an owner-controlled calibration trial of an enabled profile**. It does not meet a claim of complete feature parity or production-tested support for every original device.
 

@@ -1,7 +1,9 @@
 """Pure, calibrated cut-job geometry preparation. This module performs no I/O.
 
-FDU/FDA source units are unknown. A caller must explicitly supply millimeters
-per source unit. Knot flags never imply closure: only equal endpoints do.
+Inspected native FDU/FDA path coordinates use PostScript points. The caller
+supplies millimeters per source unit, using printing.units for automatic native
+pattern conversion or an explicit conversion for other geometry. Knot flags
+never imply closure: only equal endpoints do.
 """
 from __future__ import annotations
 
@@ -37,6 +39,9 @@ class JobOptions:
     passes: int = 1
     media_width_mm: float | None = None
     media_height_mm: float | None = None
+    position_mode: str = "origin"
+    offset_x_mm: float = 0.0
+    offset_y_mm: float = 0.0
     max_points: int = 1_000_000
     max_subdivisions: int = 1_000_000
     max_subdivision_depth: int = 32
@@ -96,6 +101,8 @@ class PreparedJob:
         return {
             "units": "mm", "width_mm": self.width_mm, "height_mm": self.height_mm,
             "bounds_mm": list(self.bounds_mm), "point_count": self.point_count,
+            "position_mode": self.options.position_mode,
+            "applied_offset_mm": list(self.bounds_mm[:2]),
             "flatten_tolerance_mm": self.flatten_tolerance_mm,
             "copy_count": self.copy_count, "pass_count": self.pass_count,
             "source_sha256": self.source_sha256,
@@ -170,6 +177,10 @@ def _validate_options(options):
     for name in ("media_width_mm", "media_height_mm"):
         if getattr(options, name) is not None:
             _number(getattr(options, name), name, positive=True)
+    if options.position_mode not in ("origin", "manual"):
+        raise GeometryError("position_mode must be origin or manual; design-position semantics are not established")
+    for name in ("offset_x_mm", "offset_y_mm"):
+        _number(getattr(options, name), name, nonnegative=True)
     for name in ("copies", "copy_columns", "passes", "max_points", "max_subdivisions", "max_subdivision_depth", "max_polylines", "max_ordering_work"):
         _integer(getattr(options, name), name)
     if isinstance(options.rotation_degrees, bool) or options.rotation_degrees not in (0, 90, 180, 270):
@@ -501,7 +512,9 @@ def prepare_job(pattern: Any, options: JobOptions) -> PreparedJob:
     border encloses the whole grid and is cut last. Passes repeat the same
     ordered job. Start-nearest preserves direction; end-nearest may reverse open
     paths to use their nearer endpoint. Closed-path starts/winding are retained.
-    Media limits, when supplied, apply to the exact source-curve layout bounds.
+    A manual position translates the complete copy/weed layout after its rigid
+    transforms; width/height remain artwork extents and bounds retain its actual
+    placed coordinates. Media limits apply to those exact placed bounds.
     """
     _validate_options(options)
     source, selected = _read_subpaths(pattern, options.selected_path_indices, options.max_points)
@@ -527,10 +540,15 @@ def prepare_job(pattern: Any, options: JobOptions) -> PreparedJob:
         raise GeometryError("Copy layout is nonfinite/oversized")
     if options.weed_border_mm is not None and (width == 0 or height == 0):
         raise GeometryError("Weed border needs nonzero area; increase its margin")
-    if options.media_width_mm is not None and width > options.media_width_mm:
-        raise GeometryError(f"Job width {width:g} mm exceeds media width {options.media_width_mm:g} mm")
-    if options.media_height_mm is not None and height > options.media_height_mm:
-        raise GeometryError(f"Job height {height:g} mm exceeds media height {options.media_height_mm:g} mm")
+    origin_x = options.offset_x_mm if options.position_mode == "manual" else 0.0
+    origin_y = options.offset_y_mm if options.position_mode == "manual" else 0.0
+    placed_bounds = (origin_x, origin_y, origin_x+width, origin_y+height)
+    if not all(math.isfinite(value) for value in placed_bounds):
+        raise GeometryError("Positioned layout is nonfinite/oversized")
+    if options.media_width_mm is not None and placed_bounds[2] > options.media_width_mm:
+        raise GeometryError(f"Job right edge {placed_bounds[2]:g} mm exceeds media width {options.media_width_mm:g} mm")
+    if options.media_height_mm is not None and placed_bounds[3] > options.media_height_mm:
+        raise GeometryError(f"Job upper edge {placed_bounds[3]:g} mm exceeds media height {options.media_height_mm:g} mm")
     budget = _Budget(options)
     base = [_flatten(path, options, budget) for path in transformed]
     base = [replace(line, points_mm=tuple((point[0]-bounds[0], point[1]-bounds[1]) for point in line.points_mm)) for line in base]
@@ -551,6 +569,8 @@ def prepare_job(pattern: Any, options: JobOptions) -> PreparedJob:
         border = ((0.0, 0.0), (width, 0.0), (width, height), (0.0, height), (0.0, 0.0))
         dependencies.append(set(range(len(lines))))
         lines.append(Polyline(border, True, None, None, None, None, role="weed"))
+    if origin_x or origin_y:
+        lines = [replace(line, points_mm=tuple((x+origin_x, y+origin_y) for x, y in line.points_mm)) for line in lines]
     ordered = _ordered(lines, dependencies, options.order, budget)
     output = tuple(replace(line, pass_index=pass_index) for pass_index in range(options.passes) for line in ordered)
     total_length = _sum_finite(line.length_mm for line in output)
@@ -560,7 +580,7 @@ def prepare_job(pattern: Any, options: JobOptions) -> PreparedJob:
         travel.append(math.hypot(line.points_mm[0][0]-cursor[0], line.points_mm[0][1]-cursor[1]))
         cursor = line.points_mm[-1]
     all_points = tuple(point for line in output for point in line.points_mm)
-    return PreparedJob(output, width, height, (0.0, 0.0, width, height), _point_bounds(all_points),
+    return PreparedJob(output, width, height, placed_bounds, _point_bounds(all_points),
                        len(all_points), total_length, _sum_finite(travel), options.flatten_tolerance_mm,
                        options.passes, options.copies, selected, raw_bounds,
                        getattr(pattern, "sha256", None), options)

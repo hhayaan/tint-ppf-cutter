@@ -1,4 +1,5 @@
 import hashlib
+import json
 from pathlib import Path
 import struct
 import tempfile
@@ -97,7 +98,7 @@ class PatternTests(unittest.TestCase):
             with self.assertRaises(PatternError):
                 export_svg(pattern, Path(directory) / "sample.svg")
 
-    def test_svg_export_preserves_source_and_declares_unknown_units(self):
+    def test_svg_declares_known_source_units_without_scaling_or_physical_size(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source_dir = root / "source"
@@ -109,8 +110,18 @@ class PatternTests(unittest.TestCase):
             output = root / "output" / "sample.svg"
             export_svg(pattern, output)
             tree = ET.parse(output)
-            metadata = tree.find("{http://www.w3.org/2000/svg}metadata").text
-            self.assertIn('"coordinate_units": "unknown"', metadata)
+            svg = tree.getroot()
+            metadata = json.loads(tree.find("{http://www.w3.org/2000/svg}metadata").text)
+            self.assertEqual(metadata["coordinate_units"], "PostScript point (1/72 inch)")
+            self.assertAlmostEqual(metadata["mm_per_source_unit"], 25.4 / 72)
+            self.assertFalse(metadata["physical_dimensions_set"])
+            self.assertFalse(metadata["physical_scale_applied"])
+            self.assertFalse(metadata["physical_cutter_verified"])
+            self.assertIn("user units", metadata["svg_units"])
+            self.assertNotIn("width", svg.attrib)
+            self.assertNotIn("height", svg.attrib)
+            self.assertEqual(svg.attrib["viewBox"], "-0.25 -0.25 10.5 1.5")
+            self.assertEqual(tree.find(".//{http://www.w3.org/2000/svg}path").attrib["d"], "M0,0 L10,0")
             self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), before)
             with self.assertRaises(PatternError):
                 export_svg(pattern, source_dir / "accidental.svg")

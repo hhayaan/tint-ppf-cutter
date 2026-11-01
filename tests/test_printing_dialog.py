@@ -48,6 +48,41 @@ class DialogInputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "whole number"):
             geometry_kwargs(values, (0,), True)
 
+    def test_resize_is_explicit_and_never_fits_geometry_to_media(self):
+        from printing.geometry import GeometryError, JobOptions, prepare_job
+        values = self.values()
+        values.update(scale_percent="50", media_width="10", media_height="10")
+        options = geometry_kwargs(values, (0,), True)
+        self.assertEqual(options["scale"], 1)
+        with self.assertRaises(GeometryError):
+            prepare_job(synthetic_rectangle(20, 20), JobOptions(**options))
+        values["resize_enabled"] = True
+        resized = prepare_job(synthetic_rectangle(20, 20), JobOptions(**geometry_kwargs(values, (0,), True)))
+        self.assertEqual((resized.width_mm, resized.height_mm), (10, 10))
+
+    def test_roll_media_requires_width_but_not_an_invented_available_length(self):
+        destination = Destination("windows_raw", {"queue_name": "test only"}, "test")
+        options = {"media_mode": "roll", "media_width_mm": 600, "media_height_mm": None}
+        validate_device_bounds(destination, options, {"native_bounds_mm": [0, 0, 590, 1800]})
+        with self.assertRaisesRegex(ValueError, "exceed"):
+            validate_device_bounds(destination, options, {"native_bounds_mm": [0, 0, 610, 1800]})
+        with self.assertRaisesRegex(ValueError, "actual usable media"):
+            validate_device_bounds(destination, {**options, "media_width_mm": None}, {"native_bounds_mm": [0, 0, 20, 20]})
+        with self.assertRaisesRegex(ValueError, "exceed"):
+            validate_device_bounds(destination, {**options, "media_height_mm": 1000}, {"native_bounds_mm": [0, 0, 590, 1800]})
+        with self.assertRaisesRegex(ValueError, "actual usable media"):
+            validate_device_bounds(destination, {**options, "media_mode": "sheet"}, {"native_bounds_mm": [0, 0, 590, 1800]})
+
+    def test_manual_offsets_apply_to_whole_job_and_cannot_be_silently_discarded_by_panels(self):
+        from printing.geometry import JobOptions, prepare_job
+        values = self.values()
+        values.update(offset_x="5", offset_y="7")
+        job = prepare_job(synthetic_rectangle(20, 10), JobOptions(**geometry_kwargs(values, (0,), True)))
+        self.assertEqual(job.bounds_mm, (5, 7, 25, 17))
+        values.update(paneling=True, panel_page="1", panel_overlap="0", media_width="50", media_height="50")
+        with self.assertRaisesRegex(ValueError, "Start X"):
+            preparation_kwargs(values, (0,), True)
+
     def test_manual_paneling_defers_media_fit_and_selects_exactly_one_page(self):
         values = self.values()
         values.update(paneling=True, panel_page="3", panel_overlap="2", media_width="100", media_height="80")

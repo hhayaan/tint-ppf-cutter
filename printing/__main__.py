@@ -9,6 +9,7 @@ from printing.backend import ToolOptions, compile_job, discover_runtime
 from printing.driver_catalog import get_driver, get_profile, search_profiles
 from printing.geometry import JobOptions, prepare_job
 from printing.transports import write_job_file
+from printing.units import resolve_pattern_units
 from tools.patterns.fvd_pattern import read_pattern
 
 
@@ -21,7 +22,8 @@ def main():
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--pattern", type=Path)
     source.add_argument("--test-rectangle", type=float, nargs=2, metavar=("WIDTH_MM", "HEIGHT_MM"))
-    parser.add_argument("--mm-per-source-unit", type=float)
+    parser.add_argument("--mm-per-source-unit", type=float,
+                        help="Advanced custom override; supported FDA/FDU patterns use their native physical units automatically")
     parser.add_argument("--output", type=Path, help="New output file; no existing file is replaced")
     parser.add_argument("--media", type=float, nargs=2, metavar=("WIDTH_MM", "LENGTH_MM"))
     parser.add_argument("--speed", type=int)
@@ -39,12 +41,17 @@ def main():
     if profile is None:
         parser.error("Unknown exact profile key; use --list-models")
     if args.pattern:
+        pattern = read_pattern(args.pattern)
         if args.mm_per_source_unit is None:
-            parser.error("Pattern jobs require an explicit --mm-per-source-unit")
-        pattern, factor = read_pattern(args.pattern), args.mm_per_source_unit
+            units = resolve_pattern_units(pattern).to_dict()
+            factor = units["mm_per_source_unit"]
+        else:
+            factor = args.mm_per_source_unit
+            units = {"automatic": False, "source_unit": "custom override", "mm_per_source_unit": factor}
     else:
         from printing.dialog import synthetic_rectangle
         pattern, factor = synthetic_rectangle(*args.test_rectangle), 1.0
+        units = {"automatic": False, "source_unit": "millimeter", "mm_per_source_unit": 1.0}
     media = args.media or (None, None)
     prepared = prepare_job(pattern, JobOptions(mm_per_source_unit=factor, media_width_mm=media[0], media_height_mm=media[1]))
     driver = get_driver(profile["driver_id"])
@@ -53,8 +60,10 @@ def main():
     receipt = args.output.with_suffix(args.output.suffix + ".json")
     if args.output.exists() or receipt.exists():
         parser.error("Output or receipt already exists; choose a new filename")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     result = write_job_file(args.output, compiled.payload)
-    metadata = {**compiled.metadata, "delivery": result.to_dict(), "geometry": prepared.preview_data()}
+    metadata = {**compiled.metadata, "delivery": result.to_dict(), "geometry": prepared.preview_data(),
+                "source_units": units}
     with receipt.open("x", encoding="utf-8") as stream:
         json.dump(metadata, stream, indent=2, allow_nan=False)
         stream.write("\n")

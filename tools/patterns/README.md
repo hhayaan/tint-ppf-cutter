@@ -54,9 +54,17 @@ The second ushort is preserved verbatim, because its editing semantics remain
 unknown. Declared point arrays and optional extra trailer bytes are kept
 separate; extra bytes are not guessed to be additional points.
 
-SVG output is an inspection preview. Coordinate units have not been calibrated,
-the default Cartesian y-axis is an inference (`--y-axis down` omits inversion),
-and native rendering or physical cutting has not validated the result. Unknown
+Inspected native FDA/FDU path coordinates use PostScript points: 1/72 inch, or
+25.4/72 millimeters per source unit. The native serializer/conversion evidence
+and original-application dimension check are described in
+[the pattern units note](../../docs/pattern-units.md). The cutting planner uses
+this conversion automatically for supported complete native patterns.
+
+SVG output remains an inspection preview in raw viewBox user units. It sets no
+physical width or height and applies no conversion to millimeters or inches.
+Metadata records the known source convention and that no physical SVG sizing
+was applied. The default Cartesian y-axis is an inference (`--y-axis down` omits
+inversion), and physical cutting has not validated the result. Unknown
 record types generate warnings, and their contents are not interpreted. Bounding
 boxes include control points, so they can be larger than the visible curves.
 No line joining, curve simplification, scaling to inches/mm, or cut commands are

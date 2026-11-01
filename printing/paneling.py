@@ -217,6 +217,9 @@ def _validate_prepared(prepared):
             or box[2] < box[0] or box[3] < box[1]
             or not math.isfinite(box[2]-box[0]) or not math.isfinite(box[3]-box[1])):
         raise PanelingError("Prepared artwork bounds are invalid")
+    if (prepared.options.position_mode == "manual"
+            and (prepared.options.offset_x_mm or prepared.options.offset_y_mm)):
+        raise PanelingError("Manual paneling cannot combine a manual position with nonzero offsets; use zero position offsets")
     for dimension, extent in ((prepared.width_mm, box[2]-box[0]), (prepared.height_mm, box[3]-box[1])):
         if (not isinstance(dimension, Real) or isinstance(dimension, bool) or not math.isfinite(dimension)
                 or not math.isclose(dimension, extent, rel_tol=1e-12, abs_tol=1e-8)):

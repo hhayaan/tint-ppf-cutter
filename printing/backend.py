@@ -43,6 +43,8 @@ class ToolOptions:
         for name in ("rotate_axes", "return_origin", "feed"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be a boolean")
+        if not self.return_origin:
+            raise ValueError("End-position continuation is not implemented; return to plotter origin is required")
         if self.feed:
             raise ValueError("An explicit page-feed operation has not yet been validated")
 
@@ -134,10 +136,15 @@ def native_request(prepared, profile_key: str, options: ToolOptions, runtime_dir
             and max(artwork_width, artwork_height) > 0):
         raise ValueError("Prepared page dimensions are invalid")
     layout = getattr(prepared, "options", None)
+    bounds = getattr(prepared, "bounds_mm", (0.0, 0.0, artwork_width, artwork_height))
+    if (not isinstance(bounds, (tuple, list)) or len(bounds) != 4
+            or any(not math.isfinite(float(value)) for value in bounds)
+            or bounds[0] < 0 or bounds[1] < 0 or bounds[2] < bounds[0] or bounds[3] < bounds[1]):
+        raise ValueError("Prepared placement bounds are invalid")
     # A straight horizontal/vertical contour still needs a nondegenerate native
     # page. The actual emitted bounds are measured from points, not page corners.
-    width = getattr(layout, "media_width_mm", None) or max(artwork_width, 1.0)
-    height = getattr(layout, "media_height_mm", None) or max(artwork_height, 1.0)
+    width = getattr(layout, "media_width_mm", None) or max(bounds[2], 1.0)
+    height = getattr(layout, "media_height_mm", None) or max(bounds[3], 1.0)
     if not (math.isfinite(width) and math.isfinite(height) and 0 < width <= 100000 and 0 < height <= 100000):
         raise ValueError("Loaded media/page dimensions are invalid")
     if driver["id"] == "graphtec":

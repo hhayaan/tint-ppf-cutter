@@ -33,6 +33,12 @@ class NativeCompilerTests(unittest.TestCase):
             with self.subTest(options=options), self.assertRaises(ValueError):
                 options.validate()
 
+    def test_end_position_continuation_is_refused_before_native_capture(self):
+        with patch.object(backend,"validate_runtime") as validate:
+            with self.assertRaisesRegex(ValueError,"continuation is not implemented"):
+                backend.native_request(self.job,"graphtec:53",backend.ToolOptions(rotate_axes=True,return_origin=False),Path("unused"))
+            validate.assert_not_called()
+
     def test_native_request_keeps_exact_variant_and_calibrated_coordinates(self):
         with patch.object(backend, "validate_runtime", return_value=Path("C:/private/runtime")):
             request = backend.native_request(self.job, "graphtec:53", self.options, Path("unused"))
@@ -70,6 +76,20 @@ class NativeCompilerTests(unittest.TestCase):
             request = backend.native_request(line, "graphtec:53", self.options, Path("unused"))
             self.assertEqual(request["height_mm"], 1)
             self.assertEqual(request["paths"][0], [[0, 0], [20, 0]])
+
+    def test_manual_position_uses_absolute_page_extent_without_rescaling(self):
+        placed = prepare_job(synthetic_rectangle(20,10),JobOptions(1,position_mode="manual",offset_x_mm=5,offset_y_mm=7))
+        with patch.object(backend,"validate_runtime",return_value=Path("unused")):
+            request=backend.native_request(placed,"graphtec:53",self.options,Path("unused"))
+        self.assertEqual((request["width_mm"],request["height_mm"]),(25,17))
+        self.assertEqual(request["paths"][0],[[5,7],[25,7],[25,17],[5,17],[5,7]])
+        self.assertEqual((placed.width_mm,placed.height_mm),(20,10))
+
+    def test_manual_position_is_included_in_model_width_limit(self):
+        placed = prepare_job(synthetic_rectangle(20,10),JobOptions(1,position_mode="manual",offset_x_mm=1360))
+        with patch.object(backend,"validate_runtime",return_value=Path("unused")):
+            with self.assertRaisesRegex(ValueError,"1372"):
+                backend.native_request(placed,"graphtec:53",self.options,Path("unused"))
 
     def test_catalog_only_profile_and_unverified_axes_never_start_helper(self):
         with patch.object(backend, "native_request", return_value={"driver_sha256": "expected"}), \

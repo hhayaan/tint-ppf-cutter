@@ -1,8 +1,8 @@
 # Tint & PPF Pattern Explorer
 
-An offline Windows desktop prototype for browsing a vehicle-pattern catalog, previewing geometry, and preparing calibrated cutting jobs.
+An offline Windows desktop prototype for browsing a vehicle-pattern catalog, previewing geometry, and preparing cutting jobs at the original pattern size.
 
-**Current testing scope:** catalog search, vector inspection, calibrated job preparation, native driver command capture, and explicit file/Windows RAW queue/TCP/serial delivery, plus an advanced driver-dependent USB path. The recovered catalog contains 344 model profiles; only profiles that pass the offline native capture gate can generate jobs. **No physical cutter has been tested. Full original-software printing parity is not complete.** Pattern scale requires a supplied conversion or known dimension; SVG previews retain their earlier inspection-only meaning.
+**Current testing scope:** catalog search, vector inspection, original-size job preparation, native driver command capture, and explicit file/Windows RAW queue/TCP/serial delivery, plus an advanced driver-dependent USB path. All 344 model profiles passed the offline command-capture gate. **No physical cutter has been tested. Full original-software printing parity is not complete.** Supported complete FDA/FDU patterns now use their recovered native units automatically at 100%; SVG exports remain inspection previews. See the [pattern-size evidence](docs/pattern-units.md).
 
 ## Set up on another Windows PC
 
@@ -35,12 +35,14 @@ Browsing requires Python with Tk and the separate dataset. Codex, REA, Ghidra, M
 ## Prepare a cutting test
 
 1. Supply the matching Film Designs `ClientV2` DLL folder, or extract the separately shared **`TintPPF-NativeRuntime-v1.zip`** into this project. The private ZIP creates `.runtime/vendor/`; it contains 58 DLLs and is about 11.6 MB. Keep this optional runtime outside GitHub, alongside the separate pattern-data handoff.
-2. Open **Cut / test…**. The owner's confirmed **Graphtec FC9000-140** profile is selected initially. Changing a profile does not contact a device. A standalone 20 × 20 mm test rectangle is available even without pattern data.
-3. Keep **File** selected, prepare the job, and inspect the selected paths, millimeter dimensions, actual native coordinate bounds, model, and generated commands. Save to a new output filename.
-4. For a pattern, supply its verified millimeters-per-source-unit conversion or use a known unrotated selected width. Complete decoding alone does not establish a physical size.
-5. For an owner-operated hardware trial, enter the actual usable media width/length and select an existing Windows RAW queue, a verified TCP host/port, or explicit COM settings. The advanced **Direct USB** tab instead requires the actual selected interface path and matching VID/PID; its installed-driver behavior is unverified. Review the newly generated job before **Send reviewed job once**. A successful send reports local acceptance, not a verified physical cut.
+2. Open **Cut / test…**. The last saved model/setup is restored; the initial choice is the owner's confirmed **Graphtec FC9000-140**. Changing a profile does not contact a device. A standalone 20 × 20 mm test rectangle is available even without pattern data.
+3. Select **File** for the first check. Choose the intended paths, prepare the job, and inspect millimeter dimensions, actual native coordinate bounds, model, and generated commands. Save to a new output filename.
+4. Leave supported FDA/FDU patterns at **Original pattern size (automatic)** and 100%. Custom source calibration and **Resize this job** are optional controls under **Advanced size / quality**. They apply to the current job only.
+5. For an owner-operated hardware trial, enter the actual usable media width. **Roll** mode permits a blank available length; the job preview shows the length needed. **Sheet** mode requires width and length. Media limits reject oversized output without shrinking it. Select an existing Windows RAW queue, a verified TCP host/port, or explicit COM settings. The advanced **Direct USB** tab instead requires the actual selected interface path and matching VID/PID; its installed-driver behavior is unverified. Review the newly generated job before **Send reviewed job once**. A successful send reports local acceptance, not a verified physical cut.
 
-For an oversized layout, enable **Manual paneling** and use the media width/length as the page size. Select a page number and optional overlap, then prepare, review and output that page separately. Previous/Next changes the page selection only; there is no automatic advance, feed or continuation. Position the media/origin yourself and use a new output filename for each saved page. Prepare, Send and status stay visible while the rest of the form scrolls.
+**Save cutter setup** remembers the runtime, connection, media and tool settings separately for each exact model in ignored `.runtime/cut-settings.json`; successful preparation also saves that setup. Pattern selection, resizing, custom calibration, copies and page selection do not carry into the next job. Start X/Y default to zero at the cutter origin; positive values offset the complete layout. Native axes remain locked to the captured mode, return-to-origin stays enabled, and unverified feed/continuation choices are disabled.
+
+For an oversized layout, enable **Manual paneling** and enter both media width and length as the page size. Start X/Y must be zero in this mode. Select a page number and optional overlap, then prepare, review and output that page separately. Previous/Next changes the page selection only; there is no automatic advance, feed or continuation. Position the media/origin yourself and use a new output filename for each saved page. Prepare, Send and status stay visible while the rest of the form scrolls.
 
 For the FC9000-140, this backend generates HP-GL. The owner has not confirmed the cutter's current COMMAND setting; check it against HP-GL before the trial. Direct X/Y axes are used for the verified profile. USB can use an appropriate installed Windows queue or the separate advanced generic device-path primitive. Neither establishes universal manufacturer USB or Data Link support, and no TCP port is guessed. [Graphtec's OPS662 driver](https://www.graphteccorp.com/download/ops662_w64/) and [Data Link connection guidance](https://www.graphteccorp.com/download/gps_w/) describe distinct routes.
 
@@ -67,15 +69,17 @@ This checks the supplied manifest, file hashes, catalog integrity, and catalog-t
 | Geometry | Vector preview, pan/zoom, and fit-to-window |
 | SVG | Exports a new inspection preview under `exports/`; original files stay read-only |
 | Partial geometry | Clearly labeled; ordinary SVG export is disabled |
-| Cutting jobs | Selected paths, adaptive curves, transforms, copies, passes, weed border, path order, media bounds, native driver generation |
+| Cutting jobs | Automatic original size for supported complete FDA/FDU, selected paths, adaptive curves, transforms, copies, passes, weed border, path order, manual offsets and native driver generation |
+| Cutter setup | Saved per model: connection, runtime, roll/sheet media and tools; job geometry choices remain separate |
+| Loaded media | Roll width with optional available length, or sheet width/length; rejects overflow without automatic resizing |
 | Manual paneling | Media-sized path clipping, optional overlap and explicit page selection; each page is prepared, reviewed and output separately |
 | Delivery | Exclusive file output, Windows RAW queue, explicit TCP/COM, and advanced driver-dependent USB; no automatic retries or fallback |
 | Driver coverage | 344 catalog profiles; offline capture status is recorded separately for each profile; no hardware certification |
-| Physical dimensions | Cutting requires explicit calibration; SVG inspection previews have no verified mm/inch size |
+| Physical dimensions | Native FDA/FDU conversion established from serializer/cutter analysis and original UI dimensions; physical cutter validation remains pending; SVG previews are inspection exports |
 | Original output parity | Automatic page continuation/pauses, optical registration workflows, vendor-specific/Data Link USB extensions, retained job queue, and ordinary graphics/page printing remain incomplete |
 | Editing and production workflows | Undo/editing, automatic nesting, pricing, roles, and reporting still need implementation |
 
-Importing an SVG into another program can help compare its outline visually. SVG export does not establish a production-ready cutting file. The cutting dialog separately prepares calibrated machine jobs; dimensional, orientation, machine-condition, and physical cutter validation remain part of the owner's trial.
+Importing an SVG into another program can help compare its outline visually. SVG export does not establish a production-ready cutting file. The cutting dialog separately prepares machine jobs at the established native pattern size. Output scale, orientation, machine conditions and the physical cut still need an owner-operated hardware check.
 
 The initial 2026-11-01 local dataset contains **143,321 catalog listings** and **48,177 pattern files**, plus **100 compatibility warnings**. Listings can share a geometry asset. All files were copied and SHA-256 checked; the catalog was compared against its native export. The parser structurally supports **47,834 files** and marks **343 files** as partial. Preserving every raw file and rendering every drawing feature are separate milestones.
 

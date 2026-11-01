@@ -66,12 +66,19 @@ def synthetic_rectangle(width_mm: float, height_mm: float):
                            complete_geometry=True, paths=(VectorPath(0, 0, points, b""),), warnings=())
 
 
-def geometry_kwargs(values: dict, selected_indices: tuple[int, ...], synthetic: bool) -> dict:
+def geometry_kwargs(values: dict, selected_indices: tuple[int, ...], synthetic: bool, pattern=None) -> dict:
     if not selected_indices:
         raise ValueError("Select at least one vector path")
+    if synthetic:
+        factor = 1.0
+    elif values.get("size_mode", "custom") == "original":
+        from .units import resolve_pattern_units
+        factor = resolve_pattern_units(pattern).mm_per_source_unit
+    else:
+        factor = number(values["unit_scale"], "millimeters per source unit; no source scale is assumed")
     return {
-        "mm_per_source_unit": 1.0 if synthetic else number(values["unit_scale"], "millimeters per source unit; no source scale is assumed"),
-        "scale": number(values["scale_percent"], "scale percent") / 100,
+        "mm_per_source_unit": factor,
+        "scale": number(values["scale_percent"], "scale percent") / 100 if values.get("resize_enabled", False) else 1.0,
         "flatten_tolerance_mm": number(values["tolerance"], "curve tolerance in millimeters"),
         "selected_path_indices": selected_indices,
         "inner_first": bool(values["inner_first"]),
@@ -85,14 +92,20 @@ def geometry_kwargs(values: dict, selected_indices: tuple[int, ...], synthetic: 
         "passes": integer(values["passes"], "passes"),
         "media_width_mm": number(values["media_width"], "media width", optional=True),
         "media_height_mm": number(values["media_height"], "media height", optional=True),
+        "offset_x_mm": number(values.get("offset_x", "0"), "horizontal start position", allow_minimum=True),
+        "offset_y_mm": number(values.get("offset_y", "0"), "vertical start position", allow_minimum=True),
+        "position_mode": "manual",
     }
 
 
-def preparation_kwargs(values: dict, selected_indices: tuple[int, ...], synthetic: bool) -> tuple[dict, dict | None, dict]:
-    geometry = geometry_kwargs(values, selected_indices, synthetic)
+def preparation_kwargs(values: dict, selected_indices: tuple[int, ...], synthetic: bool, pattern=None) -> tuple[dict, dict | None, dict]:
+    geometry = geometry_kwargs(values, selected_indices, synthetic, pattern)
     review = dict(geometry)
+    review["media_mode"] = values.get("media_mode", "sheet")
     if not values.get("paneling", False):
         return geometry, None, review
+    if geometry["offset_x_mm"] or geometry["offset_y_mm"]:
+        raise ValueError("Manual paneling requires Start X and Start Y to be 0; position each page at the cutter")
     width, height = geometry["media_width_mm"], geometry["media_height_mm"]
     if width is None or height is None:
         raise ValueError("Manual paneling requires explicit usable media width and length as the page size")
@@ -222,14 +235,17 @@ def validate_device_bounds(destination: Destination, options: dict, metadata: di
     if destination.kind == "file":
         return
     width, height = options.get("media_width_mm"), options.get("media_height_mm")
-    if width is None or height is None or not all(isinstance(value, (int, float)) and math.isfinite(value) and value > 0 for value in (width, height)):
-        raise ValueError("Device output requires the actual usable media width and length in millimeters")
+    roll = options.get("media_mode") == "roll"
+    if width is None or (height is None and not roll) or not all(isinstance(value, (int, float)) and math.isfinite(value) and value > 0 for value in (width, height) if value is not None):
+        raise ValueError("Device output requires the actual usable media width, and length for sheets, in millimeters")
     bounds = native_bounds(metadata)
     if bounds is None:
         raise ValueError("Native emitted-coordinate bounds are unavailable; save to File for inspection instead")
     xmin, ymin, xmax, ymax = bounds
-    if xmin < -1e-6 or ymin < -1e-6 or xmax > width + 1e-6 or ymax > height + 1e-6:
-        raise ValueError(f"Native output bounds X {xmin:g}…{xmax:g}, Y {ymin:g}…{ymax:g} mm exceed the usable media {width:g} × {height:g} mm")
+    limit = height if height is not None else 100000.0
+    if xmin < -1e-6 or ymin < -1e-6 or xmax > width + 1e-6 or ymax > limit + 1e-6:
+        length = f"{height:g}" if height is not None else "roll"
+        raise ValueError(f"Native output bounds X {xmin:g}…{xmax:g}, Y {ymin:g}…{ymax:g} mm exceed the usable media {width:g} × {length} mm")
 
 
 class CutDialog(tk.Toplevel if tk else object):
@@ -256,6 +272,8 @@ class CutDialog(tk.Toplevel if tk else object):
         self.usb_devices = {}
         self.cancel_event = threading.Event()
         self.variables = {}
+        self.restoring_setup = False
+        self.loaded_profile = None
         defaults = {"source": "pattern" if pattern and getattr(pattern, "complete_geometry", False) else "test",
                     "unit_scale": "", "known_width": "", "test_width": "20", "test_height": "20",
                     "scale_percent": "100", "tolerance": "0.05", "rotation": "0", "copies": "1", "columns": "1",
@@ -266,13 +284,15 @@ class CutDialog(tk.Toplevel if tk else object):
                     "queue": "", "host": "", "port": "", "timeout": "10", "com": "", "baud": "9600", "parity": "N",
                     "stop_bits": "1", "data_bits": "8", "flow": "none",
                     "usb_path": "", "usb_vid": "", "usb_pid": "", "usb_pipe": ""}
-        defaults.update(panel_page="1", panel_overlap="0")
+        defaults.update(panel_page="1", panel_overlap="0", size_mode="original", media_mode="roll", offset_x="0", offset_y="0")
+        self.machine_defaults = dict(defaults)
         for key, value in defaults.items():
             self.variables[key] = tk.StringVar(value=value)
         for key, value in {"inner_first": True, "mirror_x": False, "mirror_y": False,
-                           "rotate_axes": True, "return_origin": True, "feed": False, "paneling": False}.items():
+                           "rotate_axes": True, "return_origin": True, "feed": False, "paneling": False, "resize_enabled": False}.items():
             self.variables[key] = tk.BooleanVar(value=value)
-        self.status = tk.StringVar(value="Choose the exact model, paths, physical scale, and destination; then prepare the output preview.")
+        self.status = tk.StringVar(value="Patterns use their original size at 100%. Choose paths, loaded media and destination, then preview the cut.")
+        self.size_summary = tk.StringVar(value="Original pattern size · 100%")
         self.review_summary = tk.StringVar(value="No generated job has been reviewed.")
         self.mode_notice = tk.StringVar()
         verification_path = self.workspace / "docs" / "printing-native-verification.json"
@@ -283,14 +303,25 @@ class CutDialog(tk.Toplevel if tk else object):
         if not isinstance(verification, dict):
             verification = {}
         self.profiles = profile_labels(search_profiles(), verification)
+        from .settings import default_settings_path, load_settings, SettingsError
+        self.settings_path = default_settings_path(self.workspace)
+        self.saved_settings = {}
+        self.settings_error = None
+        try:
+            self.saved_settings = load_settings(self.settings_path)
+        except SettingsError as error:
+            self.settings_error = str(error)
         self._build()
         for key, variable in self.variables.items():
             if key != "profile_search":
                 variable.trace_add("write", self.profile_changed if key == "profile" else self.invalidate)
         self.variables["profile_search"].trace_add("write", self.filter_profiles)
         self.refresh_paths()
-        self.variables["profile"].set(owner_profile_label(self.profiles))
-        self.after(100, self.poll)
+        last = self.saved_settings.get("last_profile")
+        self.variables["profile"].set(next((label for label, key in self.profiles.items() if key == last), owner_profile_label(self.profiles)))
+        if self.settings_error:
+            self.status.set("Saved cutter setup could not be read: " + self.settings_error)
+        self.poll_id = self.after(100, self.poll)
 
     def _build(self):
         # Keep action/status controls visible while the full form remains
@@ -316,11 +347,11 @@ class CutDialog(tk.Toplevel if tk else object):
             self.form_canvas.configure(scrollregion=self.form_canvas.bbox("all"))
         outer.bind("<Configure>", resize_form)
         self.form_canvas.bind("<Configure>", resize_form)
-        ttk.Label(outer, text="Prepare a cut / plot job", font=("Segoe UI", 17, "bold")).pack(anchor="w")
-        ttk.Label(outer, text="Compiler uses original installed driver DLLs. Capture verified means generated bytes were checked; no model is hardware certified.", foreground="#72501e").pack(anchor="w", pady=(4, 8))
+        ttk.Label(outer, text="Cut pattern", font=("Segoe UI", 17, "bold")).pack(anchor="w")
+        ttk.Label(outer, text="Original size at 100% • Select pieces, check loaded media, preview and cut.", foreground="#2c4a61").pack(anchor="w", pady=(4, 8))
         if self.compatibility_note:
             ttk.Label(outer, text="Pattern compatibility: " + self.compatibility_note, foreground="#923d1a", wraplength=1100).pack(anchor="w", pady=(0, 8))
-        driver = ttk.LabelFrame(outer, text="Exact model and compiler runtime", padding=8)
+        driver = ttk.LabelFrame(outer, text="Cutter setup", padding=8)
         driver.pack(fill="x")
         ttk.Label(driver, text="Filter models").grid(row=0, column=0, sticky="w")
         ttk.Entry(driver, textvariable=self.variables["profile_search"], width=20).grid(row=1, column=0, sticky="ew", padx=(0, 8))
@@ -331,6 +362,7 @@ class CutDialog(tk.Toplevel if tk else object):
         ttk.Entry(driver, textvariable=self.variables["runtime"]).grid(row=2, column=1, sticky="ew", pady=(6, 0))
         ttk.Button(driver, text="Browse…", command=self.choose_runtime).grid(row=2, column=2, padx=(8, 0), pady=(6, 0))
         ttk.Label(driver, textvariable=self.mode_notice, foreground="#72501e", wraplength=1080).grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Button(driver, text="Save cutter setup", command=self.save_setup).grid(row=4, column=2, sticky="e", pady=(5, 0))
         driver.columnconfigure(1, weight=1)
         main = ttk.Frame(outer)
         main.pack(fill="x", pady=8)
@@ -357,24 +389,25 @@ class CutDialog(tk.Toplevel if tk else object):
         ttk.Button(controls, text="Select all", command=self.select_all).pack(side="left")
         ttk.Button(controls, text="Clear", command=self.clear_paths).pack(side="left", padx=5)
         ttk.Label(controls, text="Ctrl/Shift selects multiple paths").pack(side="left", padx=5)
-        geometry = ttk.LabelFrame(main, text="Dimensions and geometry", padding=8)
+        geometry = ttk.LabelFrame(main, text="Size and loaded media", padding=8)
         geometry.pack(side="right", fill="both", expand=True)
-        self._field(geometry, "mm per source unit (required for patterns)", "unit_scale", 0, 0)
-        self._field(geometry, "Known unrotated selected width (mm)", "known_width", 1, 0)
-        ttk.Button(geometry, text="Use known width", command=self.calibrate_width).grid(row=1, column=2, padx=4)
-        self._field(geometry, "Scale (%)", "scale_percent", 2, 0)
-        self._field(geometry, "Curve tolerance (mm)", "tolerance", 3, 0)
-        self._field(geometry, "Usable media width (mm; required for device)", "media_width", 4, 0)
-        self._field(geometry, "Usable media length (mm; required for device)", "media_height", 5, 0)
+        ttk.Label(geometry, textvariable=self.size_summary, wraplength=440).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        ttk.Label(geometry, text="Media").grid(row=1, column=0, sticky="w")
+        ttk.Combobox(geometry, textvariable=self.variables["media_mode"], values=("roll", "sheet"), state="readonly", width=12).grid(row=1, column=1, sticky="w")
+        self._field(geometry, "Usable width (mm)", "media_width", 2, 0)
+        self._field(geometry, "Available length (mm)", "media_height", 3, 0)
+        ttk.Label(geometry, text="Roll: length can be blank; the preview shows length needed.\nSheet / manual panels: enter width and length. No automatic shrinking.", wraplength=440).grid(row=4, column=0, columnspan=3, sticky="w", pady=(5, 0))
         geometry.columnconfigure(1, weight=1)
         settings = ttk.Notebook(outer)
         settings.pack(fill="x")
         transforms = ttk.Frame(settings, padding=8)
         tools = ttk.Frame(settings, padding=8)
         panels = ttk.Frame(settings, padding=8)
+        advanced = ttk.Frame(settings, padding=8)
         settings.add(transforms, text="Layout and path order")
         settings.add(tools, text="Driver tool options")
         settings.add(panels, text="Manual paneling")
+        settings.add(advanced, text="Advanced size / quality")
         for index, (label, key) in enumerate((("Copies", "copies"), ("Columns", "columns"), ("Spacing (mm)", "spacing"), ("Weed border (mm; optional)", "weed"), ("Passes", "passes"))):
             self._field(transforms, label, key, index // 3, (index % 3) * 2, width=8)
         ttk.Label(transforms, text="Rotation").grid(row=1, column=4, sticky="w")
@@ -383,6 +416,9 @@ class CutDialog(tk.Toplevel if tk else object):
             ttk.Checkbutton(transforms, text=text, variable=self.variables[key]).grid(row=2, column=column * 2, columnspan=2, sticky="w", pady=(5, 0))
         ttk.Label(transforms, text="Path order").grid(row=3, column=0, sticky="w", pady=4)
         ttk.Combobox(transforms, textvariable=self.variables["order"], values=("unsorted", "start-nearest", "end-nearest"), state="readonly", width=18).grid(row=3, column=1, columnspan=2, sticky="w")
+        self._field(transforms, "Start X (mm)", "offset_x", 4, 0, width=8)
+        self._field(transforms, "Start Y (mm)", "offset_y", 4, 2, width=8)
+        ttk.Label(transforms, text="0, 0 starts at the cutter origin; positive values offset the complete layout.").grid(row=5, column=0, columnspan=6, sticky="w")
         for index, (label, key) in enumerate((("Speed (native units; optional)", "speed"), ("Force (native units; optional)", "force"), ("Acceleration (native units; optional)", "acceleration"), ("Tool", "tool"))):
             self._field(tools, label, key, index // 2, (index % 2) * 2, width=12)
         for column, (text, key) in enumerate((("Direct X/Y axes (native Rotate90)", "rotate_axes"), ("Return to origin", "return_origin"), ("Feed after job", "feed"))):
@@ -392,6 +428,9 @@ class CutDialog(tk.Toplevel if tk else object):
                 checkbox.configure(state="disabled")
             elif key == "rotate_axes":
                 self.axis_checkbox = checkbox
+                checkbox.configure(state="disabled")
+            elif key == "return_origin":
+                checkbox.configure(state="disabled")
         ttk.Label(tools, text="Blank values add no host override; model initialization can still emit its native defaults.", foreground="#72501e").grid(row=3, column=0, columnspan=6, sticky="w")
         ttk.Checkbutton(panels, text="Enable manual paneling", variable=self.variables["paneling"]).grid(row=0, column=0, columnspan=2, sticky="w")
         self._field(panels, "Selected page (1 based)", "panel_page", 1, 0, width=8)
@@ -399,6 +438,16 @@ class CutDialog(tk.Toplevel if tk else object):
         ttk.Button(panels, text="Previous page", command=lambda: self.change_panel_page(-1)).grid(row=1, column=4, padx=4)
         ttk.Button(panels, text="Next page", command=lambda: self.change_panel_page(1)).grid(row=1, column=5, padx=4)
         ttk.Label(panels, text="Usable media width/length define each page. Prepare, review and send one selected page at a time. Position the media/origin yourself; there is no automatic advance or feed. Use a new file name for each saved page.", foreground="#72501e", wraplength=1080).grid(row=2, column=0, columnspan=6, sticky="w", pady=(6, 0))
+        ttk.Radiobutton(advanced, text="Original pattern size (automatic)", variable=self.variables["size_mode"], value="original").grid(row=0, column=0, columnspan=3, sticky="w")
+        ttk.Radiobutton(advanced, text="Custom source calibration", variable=self.variables["size_mode"], value="custom").grid(row=1, column=0, columnspan=3, sticky="w")
+        self.unit_entry = self._field(advanced, "mm per source unit", "unit_scale", 2, 0)
+        self.known_entry = self._field(advanced, "Known selected width (mm)", "known_width", 3, 0)
+        self.calibrate_button = ttk.Button(advanced, text="Use known width", command=self.calibrate_width)
+        self.calibrate_button.grid(row=3, column=2, padx=4)
+        ttk.Checkbutton(advanced, text="Resize this job", variable=self.variables["resize_enabled"]).grid(row=0, column=3, columnspan=2, sticky="w")
+        self.scale_entry = self._field(advanced, "Scale (%)", "scale_percent", 1, 3)
+        self._field(advanced, "Curve tolerance (mm)", "tolerance", 2, 3)
+        ttk.Label(advanced, text="Resizing and custom calibration apply only to this job. Normal vehicle patterns should stay at their original size.", wraplength=1000).grid(row=4, column=0, columnspan=6, sticky="w", pady=5)
         self.transport_tabs = ttk.Notebook(outer)
         self.transport_tabs.pack(fill="x", pady=8)
         for title in ("File", "Windows RAW queue", "TCP", "Serial COM", "Direct USB"):
@@ -493,14 +542,128 @@ class CutDialog(tk.Toplevel if tk else object):
         self.review_geometry_options = None
         self.send_button.configure(state="disabled")
         self.review_summary.set("Settings or selection changed. Prepare a new output preview before sending.")
+        if hasattr(self, "unit_entry"):
+            custom = self.variables["size_mode"].get() == "custom"
+            for widget in (self.unit_entry, self.known_entry, self.calibrate_button):
+                widget.configure(state="normal" if custom else "disabled")
+            self.scale_entry.configure(state="normal" if self.variables["resize_enabled"].get() else "disabled")
+        if not getattr(self, "size_update_pending", False):
+            self.size_update_pending = True
+            self.size_update_id = self.after_idle(self.update_size_summary)
+
+    def update_size_summary(self):
+        self.size_update_pending = False
+        self.size_update_id = None
+        if self.closed:
+            return
+        try:
+            values = self.values()
+            if values["source"] == "test":
+                width = number(values["test_width"], "test width")
+                height = number(values["test_height"], "test height")
+                description = "Test rectangle"
+            else:
+                from .geometry import source_bounds
+                options = geometry_kwargs(values, tuple(self.path_list.curselection()), False, self.pattern)
+                xmin, ymin, xmax, ymax = source_bounds(self.pattern, options["selected_path_indices"])
+                width = (xmax - xmin) * options["mm_per_source_unit"]
+                height = (ymax - ymin) * options["mm_per_source_unit"]
+                description = "Original pattern size" if values["size_mode"] == "original" else "Custom calibration"
+            scale = number(values["scale_percent"], "scale percent") / 100 if values["resize_enabled"] else 1.0
+            self.size_summary.set(f"{description} · {scale * 100:g}%\nSelected: {width * scale:.2f} × {height * scale:.2f} mm (before layout)")
+        except (ValueError, TypeError, AttributeError) as error:
+            self.size_summary.set(str(error))
+
+    def save_setup(self, *, quiet=False):
+        try:
+            from .settings import save_profile_settings
+            from .backend import ToolOptions
+            values = self.values()
+            key = self.profiles.get(values["profile"])
+            if not key:
+                raise ValueError("Choose a cutter model first")
+            kind = self.transport_tabs.tab(self.transport_tabs.select(), "text")
+            if kind == "File":
+                connection = {"type": "file", "file_directory": str(Path(values["file"]).parent)}
+            else:
+                destination = destination_from_values(kind, values)
+                connection = {"type": destination.kind, **destination.parameters}
+            tool_values = {"speed": integer(values["speed"], "speed", optional=True),
+                           "force": integer(values["force"], "force", optional=True),
+                           "acceleration": number(values["acceleration"], "acceleration", optional=True),
+                           "tool": integer(values["tool"], "tool"), "rotate_axes": bool(values["rotate_axes"]),
+                           "return_origin": bool(values["return_origin"])}
+            ToolOptions(**tool_values).validate()
+            setup = {"runtime_directory": values["runtime"], "connection": connection,
+                     "media": {"mode": values["media_mode"],
+                               "width_mm": number(values["media_width"], "media width", optional=True),
+                               "height_mm": number(values["media_height"], "media length", optional=True)}}
+            self.saved_settings = save_profile_settings(self.settings_path, key, setup=setup, tools=tool_values)
+            if not quiet:
+                self.status.set("Cutter, connection, media and tool setup saved for this model. Pattern resizing and selection are not carried into the next job.")
+            return True
+        except (ValueError, OSError) as error:
+            self.status.set("Cutter setup could not be saved: " + str(error))
+            if not quiet:
+                messagebox.showerror("Cutter setup", str(error), parent=self)
+            return False
+
+    def restore_setup(self, profile_key):
+        from .settings import profile_settings, SettingsError
+        if self.restoring_setup:
+            return
+        self.restoring_setup = True
+        try:
+            entry = profile_settings(self.saved_settings, profile_key)
+            setup, tool_values = entry["setup"], entry["tools"]
+            keys = ("runtime", "queue", "host", "port", "timeout", "com", "baud", "parity", "stop_bits", "data_bits", "flow",
+                    "usb_path", "usb_vid", "usb_pid", "usb_pipe", "media_width", "media_height", "media_mode", "speed", "force", "acceleration", "tool")
+            for key in keys:
+                self.variables[key].set(self.machine_defaults[key])
+            self.variables["return_origin"].set(True)
+            if setup.get("runtime_directory"):
+                saved_runtime = Path(setup["runtime_directory"]).expanduser()
+                fallback = Path(self.machine_defaults["runtime"])
+                self.variables["runtime"].set(str(saved_runtime if saved_runtime.is_dir() or not fallback.is_dir() else fallback))
+            for source, target in (("mode", "media_mode"), ("width_mm", "media_width"), ("height_mm", "media_height")):
+                if source in setup.get("media", {}):
+                    value = setup["media"][source]
+                    self.variables[target].set("" if value is None else str(value))
+            connection = setup.get("connection", {"type": "file"})
+            types = {"file": "File", "windows_raw": "Windows RAW queue", "tcp": "TCP", "windows_serial": "Serial COM", "windows_usb": "Direct USB"}
+            for source, target in (("queue_name", "queue"), ("host", "host"), ("port", "com" if connection["type"] == "windows_serial" else "port"),
+                                   ("timeout", "timeout"), ("baud", "baud"), ("parity", "parity"), ("stop_bits", "stop_bits"),
+                                   ("data_bits", "data_bits"), ("flow_control", "flow"), ("device_path", "usb_path"), ("pipe_number", "usb_pipe")):
+                if source in connection:
+                    self.variables[target].set("" if connection[source] is None else str(connection[source]))
+            for source, target in (("vid", "usb_vid"), ("pid", "usb_pid")):
+                if source in connection:
+                    self.variables[target].set(f"{connection[source]:04X}")
+            directory = Path(connection.get("file_directory", self.workspace / "exports"))
+            self.variables["file"].set(str(directory / f"cut-job-{datetime.now():%Y%m%d-%H%M%S-%f}.plt"))
+            for tab in self.transport_tabs.tabs():
+                if self.transport_tabs.tab(tab, "text") == types[connection["type"]]:
+                    self.transport_tabs.select(tab)
+                    break
+            for key in ("speed", "force", "acceleration", "tool"):
+                if key in tool_values:
+                    value = tool_values[key]
+                    self.variables[key].set("" if value is None else value)
+        except SettingsError as error:
+            self.status.set("Saved cutter setup could not be restored: " + str(error))
+        finally:
+            self.restoring_setup = False
 
     def profile_changed(self, *_args):
         profile_key = self.profiles.get(self.variables["profile"].get())
         profile = get_profile(profile_key) if profile_key else None
         driver = get_driver(profile["driver_id"]) if profile else None
-        is_dmpl = driver is not None and "DMPL" in driver.get("protocol_families", ())
+        if profile_key and self.loaded_profile != profile_key:
+            self.loaded_profile = profile_key
+            self.restore_setup(profile_key)
+        is_dmpl = driver is not None and driver.get("native_abi_family") == "DMPL"
         self.variables["rotate_axes"].set(not is_dmpl)
-        self.axis_checkbox.configure(state="disabled" if is_dmpl else "normal")
+        self.axis_checkbox.configure(state="disabled")
         self.mode_notice.set("Owner-confirmed FC9000-140. Before a physical trial, verify cutter COMMAND is HP-GL; the current hardware mode is unconfirmed. Profile selection does not contact the cutter."
                              if profile_key == "graphtec:53" else "Before physical output, verify the device command mode matches the generated job.")
         self.invalidate()
@@ -576,15 +739,23 @@ class CutDialog(tk.Toplevel if tk else object):
                        if synthetic else self.pattern)
             if pattern is None or not getattr(pattern, "complete_geometry", False):
                 raise ValueError("This pattern has incomplete geometry. Choose a complete pattern or the synthetic test rectangle")
-            options, panel_options, review_options = preparation_kwargs(values, tuple(self.path_list.curselection()), synthetic)
+            options, panel_options, review_options = preparation_kwargs(values, tuple(self.path_list.curselection()), synthetic, pattern)
             tool_values = {"speed": integer(values["speed"], "speed", optional=True),
                            "force": integer(values["force"], "force", optional=True),
                            "acceleration": number(values["acceleration"], "acceleration", optional=True),
                            "tool": integer(values["tool"], "tool"), "rotate_axes": bool(values["rotate_axes"]),
                            "return_origin": bool(values["return_origin"]), "feed": bool(values["feed"])}
             destination = destination_from_values(self.transport_tabs.tab(self.transport_tabs.select(), "text"), values)
-            if destination.kind != "file" and (review_options["media_width_mm"] is None or review_options["media_height_mm"] is None):
-                raise ValueError("Device output requires the actual usable media width and length in millimeters")
+            if destination.kind != "file" and (review_options["media_width_mm"] is None or
+                    (review_options["media_height_mm"] is None and review_options["media_mode"] != "roll")):
+                raise ValueError("Enter the usable media width, and the available length when using sheets")
+            if synthetic:
+                source_units = {"source_unit": "millimeter", "mm_per_source_unit": 1.0, "automatic": True}
+            elif values["size_mode"] == "original":
+                from .units import resolve_pattern_units
+                source_units = resolve_pattern_units(pattern).to_dict()
+            else:
+                source_units = {"source_unit": "custom", "mm_per_source_unit": options["mm_per_source_unit"], "automatic": False}
             fingerprint = self.fingerprint()
             self.invalidate()
             self.busy = True
@@ -611,6 +782,8 @@ class CutDialog(tk.Toplevel if tk else object):
                                           "usable_page_height_mm": panel_options["height_mm"],
                                           "overlap_mm": panel_options["overlap_mm"], "automatic_advance": False}
                     compiled = compile_job(prepared, profile_key, ToolOptions(**tool_values), runtime)
+                    compiled = replace(compiled, metadata={**compiled.metadata, "source_units": source_units,
+                                                          "job_scale": options["scale"], "media_mode": review_options["media_mode"]})
                     if panel_metadata is not None:
                         compiled = replace(compiled, metadata={**compiled.metadata, "manual_panel": panel_metadata})
                     validate_device_bounds(destination, review_options, compiled.metadata)
@@ -738,7 +911,10 @@ class CutDialog(tk.Toplevel if tk else object):
                                   if panel_metadata else "")
                     self.review_summary.set(f"Review: {panel_text}{prepared.width_mm:.3f} × {prepared.height_mm:.3f} mm · {len(prepared.polylines):,} paths · {bounds_text} · {destination.kind}: {destination.description}")
                     self.send_button.configure(state="normal", text="Save reviewed job" if destination.kind == "file" else "Send reviewed job once")
-                    self.status.set("Review dimensions, selected paths, exact model and destination above. Sending confirms this reviewed job; physical cutter parity remains unverified.")
+                    saved = self.save_setup(quiet=True)
+                    self.status.set("Ready. Check the preview and loaded media, then save or cut. " +
+                                    ("Cutter setup remembered." if saved else "Cutter setup could not be saved; see the settings file.") +
+                                    " Physical cutter testing is still pending.")
                 elif event[0] == "sent":
                     result = event[1]
                     details = f"{result.state}: {result.bytes_sent:,}/{result.bytes_requested:,} bytes. {result.message}"
@@ -752,6 +928,10 @@ class CutDialog(tk.Toplevel if tk else object):
                         messagebox.showwarning("Output status", details, parent=self)
                     else:
                         messagebox.showinfo("Output status", details, parent=self)
+                    if result.transport == "file" and result.state == "saved":
+                        current = Path(self.variables["file"].get())
+                        if current.stem.startswith("cut-job-") and current.expanduser().resolve() == Path(result.destination).expanduser().resolve():
+                            self.variables["file"].set(str(current.parent / f"cut-job-{datetime.now():%Y%m%d-%H%M%S-%f}.plt"))
                 elif event[0] == "queues":
                     self.queue_box["values"] = [item.name for item in event[1]]
                     self.invalidate()
@@ -771,7 +951,7 @@ class CutDialog(tk.Toplevel if tk else object):
                     messagebox.showerror("Output preparation", event[1], parent=self)
         except queue.Empty:
             pass
-        self.after(100, self.poll)
+        self.poll_id = self.after(100, self.poll)
 
     def draw_prepared(self, prepared):
         self.canvas.delete("all")
@@ -798,5 +978,8 @@ class CutDialog(tk.Toplevel if tk else object):
             self.cancel()
             return
         self.closed = True
+        for identifier in (getattr(self, "poll_id", None), getattr(self, "size_update_id", None)):
+            if identifier is not None:
+                self.after_cancel(identifier)
         self.grab_release()
         self.destroy()

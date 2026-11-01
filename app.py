@@ -411,7 +411,7 @@ class PatternExplorer(tk.Tk if tk else object):
         self.details = tk.Text(right, height=7, wrap="word", background=self.cget("background"), relief="flat", font=("Segoe UI", 9))
         self.details.pack(fill="x", pady=(8, 0))
         self.details.configure(state="disabled")
-        ttk.Label(outer, text="Inspection preview only — coordinate units, orientation and physical scale are not verified.", foreground="#8a4b13").pack(anchor="w", pady=(8, 4))
+        ttk.Label(outer, text="Inspection preview — source units are PostScript points. Physical cutter testing is pending.", foreground="#8a4b13").pack(anchor="w", pady=(8, 4))
         ttk.Label(outer, textvariable=self.status_var, anchor="w").pack(fill="x")
 
     def _combo(self, parent: ttk.Frame, label: str, variable: tk.StringVar, column: int, width: int) -> ttk.Combobox:
@@ -549,7 +549,7 @@ class PatternExplorer(tk.Tk if tk else object):
             self.preview_lines = lines
             complete = getattr(pattern, "complete_geometry", False)
             self.export_button.configure(state="normal" if complete else "disabled")
-            self.preview_notice_var.set("All geometry records decoded; physical scale remains unverified." if complete else "PARTIAL PREVIEW — unsupported geometry may be omitted. SVG export is disabled.")
+            self.preview_notice_var.set("All geometry records decoded; source units established. Physical cutter testing is pending." if complete else "PARTIAL PREVIEW — unsupported geometry may be omitted. SVG export is disabled.")
             detail = f"{description}\n{len(pattern.paths):,} paths · {sum(len(v.points) for v in pattern.paths):,} stored points · {len(pattern.group_path_counts)} groups\nFile: {path.name} · SHA-256: {pattern.sha256[:20]}…"
             if pattern.warnings:
                 detail += "\nParser notes: " + "; ".join(pattern.warnings)
@@ -601,7 +601,7 @@ class PatternExplorer(tk.Tk if tk else object):
         try:
             path = export_preview(self.pattern)
             self.status_var.set(f"SVG preview saved: {path}")
-            messagebox.showinfo("SVG preview saved", f"Saved a new file:\n{path}\n\nPhysical scale and cutting suitability remain unverified.")
+            messagebox.showinfo("SVG preview saved", f"Saved a new file:\n{path}\n\nSVG retains raw source coordinates without a physical width or height. Physical cutter testing is pending.")
         except (OSError, PatternError, ValueError) as error:
             messagebox.showerror("Export failed", str(error))
 

@@ -1,7 +1,9 @@
 """Read Film Designs FDA/FDU records and export the observed vector subset.
 
-Source files are opened in binary read mode. Coordinate units and knot flag
-semantics have not been established. This module never loads vendor code.
+Source files are opened in binary read mode. Inspected native path coordinates
+use PostScript points; knot flag editing semantics remain unresolved. SVG output
+retains raw coordinates without a physical-size conversion. This module never
+loads vendor code.
 """
 from __future__ import annotations
 
@@ -20,6 +22,8 @@ PREFIX = bytes.fromhex("170001000000000092ab6f8c9a849999948b")
 HEADER = struct.Struct("<IIH")
 POINT = struct.Struct("<ddHH")
 MAX_BYTES = 16 * 1024 * 1024
+POSTSCRIPT_POINT_NAME = "PostScript point (1/72 inch)"
+MM_PER_POSTSCRIPT_POINT = 25.4 / 72.0
 KNOWN_RECORDS = {(250, 0), (0, 0), (70, 0), (49, 0), (34, 0), (1, 0), (2, 0), (71, 0)}
 
 
@@ -218,7 +222,8 @@ def summary(pattern: Pattern, include_points: bool = False) -> dict:
         "observed_groups": len(pattern.group_path_counts),
         "declared_paths_per_group": list(pattern.group_path_counts),
         "paths": len(pattern.paths), "points": sum(len(p.points) for p in pattern.paths),
-        "units": "unknown", "curve_semantics": "inferred from observed point sequences",
+        "units": POSTSCRIPT_POINT_NAME, "mm_per_source_unit": MM_PER_POSTSCRIPT_POINT,
+        "curve_semantics": "inferred from observed point sequences",
         "knot_flag_semantics": "unknown; retained without interpretation",
         "warnings": list(pattern.warnings),
         "record_types": dict(Counter(f"{r.id}:{r.kind}" for r in pattern.records)),
@@ -247,10 +252,14 @@ def export_svg(pattern: Pattern, output: Path, y_axis: str = "up", allow_partial
     viewbox = f"{xmin-margin:.12g} {ymin-margin:.12g} {max(xmax-xmin,1)+2*margin:.12g} {max(ymax-ymin,1)+2*margin:.12g}"
     stroke = max(xmax - xmin, ymax - ymin, 1) * .001
     transform = f' transform="translate(0 {ymin+ymax:.12g}) scale(1 -1)"' if y_axis == "up" else ""
-    metadata = {"source_sha256": pattern.sha256, "coordinate_units": "unknown",
+    metadata = {"source_sha256": pattern.sha256, "coordinate_units": POSTSCRIPT_POINT_NAME,
+                "mm_per_source_unit": MM_PER_POSTSCRIPT_POINT,
+                "svg_units": "viewBox user units; raw source coordinates",
+                "physical_dimensions_set": False, "physical_scale_applied": False,
+                "physical_cutter_verified": False,
                 "y_axis": y_axis, "point_roles": "inferred", "warnings": pattern.warnings,
                 "complete_geometry": pattern.complete_geometry,
-                "purpose": "inspection preview; dimensional calibration and cut output are unverified"}
+                "purpose": "inspection preview; no physical SVG size is set; physical cutter output remains unverified"}
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{viewbox}">',
              f'<title>{escape(Path(pattern.source).name)}</title>',
              '<metadata>' + escape(json.dumps(metadata)) + '</metadata>',
@@ -316,7 +325,8 @@ def scan_directory(root: Path) -> dict:
             "point_type_and_flag": dict(point_types),
             "geometry_trailer_byte_counts": dict(trailers),
             "problem_files": problems, "warning_files": warnings,
-            "limits": {"max_file_bytes": MAX_BYTES, "units": "unknown",
+            "limits": {"max_file_bytes": MAX_BYTES, "units": POSTSCRIPT_POINT_NAME,
+                       "mm_per_source_unit": MM_PER_POSTSCRIPT_POINT,
                        "point_roles": "inferred; no runtime or native decoder comparison"}}
 
 
