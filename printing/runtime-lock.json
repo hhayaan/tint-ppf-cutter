@@ -1,0 +1,336 @@
+{
+  "schema": "tint-ppf-native-runtime-lock.v1",
+  "scope": "Exact inspected x86 DLL versions used by the native adapter",
+  "files": [
+    {
+      "path": "BCGCBPRO3060142U142.dll",
+      "bytes": 10857984,
+      "sha256": "9db9a3464f9b1781cf9535cdab69da238f48e63c1ab37869960973694d61dc63"
+    },
+    {
+      "path": "drvcut/AllenDat.dll",
+      "bytes": 24576,
+      "sha256": "67cc1b525db64973c988db8b09a866efde8e91eeee18c90f271e0d414a8716cf"
+    },
+    {
+      "path": "drvcut/anaexp.dll",
+      "bytes": 36352,
+      "sha256": "3f583cd9eb3eac657499a42d0a4f93a5f8f719348b3976be4084e5f4d0038d56"
+    },
+    {
+      "path": "drvcut/aristo.dll",
+      "bytes": 24576,
+      "sha256": "4f7daa4dfb0f2735a32b137f037d782676f666dbc7c6680ff0eafed1ca1b5e6c"
+    },
+    {
+      "path": "drvcut/CraftRobo.dll",
+      "bytes": 27648,
+      "sha256": "03ba2009ed19895f720d4149fe81fe9d90186016265b7338b7a02ba24347a85d"
+    },
+    {
+      "path": "drvcut/creation.dll",
+      "bytes": 28672,
+      "sha256": "3d4114abc986ae7efe145dc70e0ee6241a97cee29b9f5f2340dc66ffc19635e1"
+    },
+    {
+      "path": "drvcut/csr.dll",
+      "bytes": 23040,
+      "sha256": "11b3f0bffe3ce7918126aab6609ad8e98a46ef055a261903d3dce7f059a4b8f8"
+    },
+    {
+      "path": "drvcut/gcc.dll",
+      "bytes": 33792,
+      "sha256": "52de0c46b087b6540689f01e292ba9933927c2b7fef108c5b270ada16a05a04b"
+    },
+    {
+      "path": "drvcut/gerber.dll",
+      "bytes": 19968,
+      "sha256": "ef6f9e5b3fe96ca8531533f1a067b8cd8bd60d7af466b29a7dd388a106c13fd0"
+    },
+    {
+      "path": "drvcut/graphtec.dll",
+      "bytes": 33280,
+      "sha256": "cff3b62ec28788b5abf61187e1960b5ec4242e546e2e82cb3111c36edbd6233b"
+    },
+    {
+      "path": "drvcut/gunner.dll",
+      "bytes": 32768,
+      "sha256": "6a4dd4801837008e0daf821621c395431864e684cc4d61c90069776c65becff1"
+    },
+    {
+      "path": "drvcut/iolineDMPL.dll",
+      "bytes": 79872,
+      "sha256": "9e47c6d432e48a6908160567e4cd77d28948b1d1de40514416675614df7ec8bc"
+    },
+    {
+      "path": "drvcut/iolineHPGL.dll",
+      "bytes": 23040,
+      "sha256": "d483c9225dcde55d968cdbb2446244207604aec5b171a1eaf5e5156af647a5c6"
+    },
+    {
+      "path": "drvcut/master.dll",
+      "bytes": 83968,
+      "sha256": "985ccf817d4e4c56fd7d5afb223e1e553414ebd80fb615c774783bf5f15145fb"
+    },
+    {
+      "path": "drvcut/mimaki.dll",
+      "bytes": 26112,
+      "sha256": "68ff5ec525d647aded2aad55ec191c2846deb3f847fe6c134bec9b38a2d51601"
+    },
+    {
+      "path": "drvcut/mutoh.dll",
+      "bytes": 34304,
+      "sha256": "5dc6eec00fbe8b362dd9b6e98bd283b9642ab365f95783f0c5b034993de83032"
+    },
+    {
+      "path": "drvcut/omega.dll",
+      "bytes": 22016,
+      "sha256": "5a3ba5d399ff420d5a762d61d9622b34b56b0c3eaef5a557956a8b115c81494c"
+    },
+    {
+      "path": "drvcut/palopoli.dll",
+      "bytes": 25600,
+      "sha256": "25526d640a6b592728c4b084ea18af22c6abd42b73ea586bd9dd93c9c43ac6d4"
+    },
+    {
+      "path": "drvcut/redsail.dll",
+      "bytes": 36352,
+      "sha256": "39c3fd4605028dd4af29cdf99ed8678b9f7d5db4f6f890b0862d0126b5f4f9f3"
+    },
+    {
+      "path": "drvcut/refine.dll",
+      "bytes": 28672,
+      "sha256": "717df3b903e6972e503701a78cb5e4b8d45de8539cba4b363ecb2cdcd532afca"
+    },
+    {
+      "path": "drvcut/rlcamm1.dll",
+      "bytes": 26112,
+      "sha256": "0cb44f972fb42b79684a67a87fe6d74f24190e0e0616304a557fa7503f6f4820"
+    },
+    {
+      "path": "drvcut/rlcamm1pro.dll",
+      "bytes": 29184,
+      "sha256": "1d0e4ce88466b1278a76bab3442c249006f2d67415357ceab26ae8bd83df65fc"
+    },
+    {
+      "path": "drvcut/rlcammjet.dll",
+      "bytes": 26112,
+      "sha256": "2c02746303f4d9bdc0738a8817ffb638481e7ecbb50bfd9ff5078d1b93981fe7"
+    },
+    {
+      "path": "drvcut/rlGS.dll",
+      "bytes": 29696,
+      "sha256": "634648a0c0e62c4f1fb8064c26a1654f582ea3bdbb999ea2b6edc6f1adbbfd23"
+    },
+    {
+      "path": "drvcut/rlgx.dll",
+      "bytes": 27648,
+      "sha256": "3cdf867d49b44d010c06a7f04e1386d64efa065e67da67d58afd795e089d9a2b"
+    },
+    {
+      "path": "drvcut/rlstk.dll",
+      "bytes": 20992,
+      "sha256": "166c33f5830106f651fc6d52c44cdc3b9b67d01165b83e8bba3a044c93bf369b"
+    },
+    {
+      "path": "drvcut/SkyCut.dll",
+      "bytes": 23040,
+      "sha256": "c28173163fc45dec7ed663498838d883cbb8f2dfd8cb0b91fc347b2637115ae4"
+    },
+    {
+      "path": "drvcut/summaDMPL.dll",
+      "bytes": 31744,
+      "sha256": "4e2f36d1b56c7a4c78fd4b2fed555091d4f121c0483f59072d0abcc6db89a295"
+    },
+    {
+      "path": "drvcut/summaHPGL.dll",
+      "bytes": 30720,
+      "sha256": "50e585bdb1f1490ad7b6c8e15a9b3fa2e8fc410a6a19fad9a6deb536b7446345"
+    },
+    {
+      "path": "drvcut/Teneth.dll",
+      "bytes": 23552,
+      "sha256": "b969fefcbd06ac56c6ea925fa7325f0185b124413a6ce45341c98e7d001507d9"
+    },
+    {
+      "path": "fltps62.dll",
+      "bytes": 2380288,
+      "sha256": "783269e8ac32a184aa454849b8649dbb954bfcea083272c17ecfb5440ff446d7"
+    },
+    {
+      "path": "gsfwk62.dll",
+      "bytes": 1515008,
+      "sha256": "136d82f41af5850bbb5a3b1ae489c9954294503713e9457571092e13034ba8d7"
+    },
+    {
+      "path": "gsfwkcut62.dll",
+      "bytes": 392704,
+      "sha256": "227203a783a8b4774d5bdc55ce090488db8b76b7f96abe3c9aa0475b0be5c868"
+    },
+    {
+      "path": "gsgdi62.dll",
+      "bytes": 177152,
+      "sha256": "1d5e6292cfad36495559ad7cbaec087a20382966e8f1e665ae05df8adbf85ca2"
+    },
+    {
+      "path": "gslib62.dll",
+      "bytes": 253440,
+      "sha256": "fcb668c4a6060cf8e00fa57f0e6c9b8608e50d7ffb455556e6d8437027fe11d9"
+    },
+    {
+      "path": "gslibcad62.dll",
+      "bytes": 605696,
+      "sha256": "d6b873a32febd589dece23be55d175bf9e3c13706cac919b93aa461f558daf4c"
+    },
+    {
+      "path": "gslibctrl62.dll",
+      "bytes": 496128,
+      "sha256": "2798c93089b3f8c98e603a1bd0eba54154c4c029b39f88e586e7f3fd68aef158"
+    },
+    {
+      "path": "gslibdib62.dll",
+      "bytes": 750592,
+      "sha256": "2045b8020f53979ca13710956016a82e96ec1a93feca4c4e75cab22dd7c1e88b"
+    },
+    {
+      "path": "gslibfnt62.dll",
+      "bytes": 111616,
+      "sha256": "2e382dd690d7a264279dc1105f3aa363d1a7b7ed3d5506e34a72e6a59ea74d6a"
+    },
+    {
+      "path": "gslibio62.dll",
+      "bytes": 356864,
+      "sha256": "3b5c48581fd748886fe49145d1a4805e712e495ede45670c0d0703298ee52076"
+    },
+    {
+      "path": "gslibnet62.dll",
+      "bytes": 84480,
+      "sha256": "b74917cd689c1a9e85f06b3b872d642c764830adfd5e983c3f7cedca7aedc88b"
+    },
+    {
+      "path": "gslibpt62.dll",
+      "bytes": 554496,
+      "sha256": "6ad52dd2e956e4bb0db92f45eb6d9a1251b76719193bb4b284fc5127de8ff952"
+    },
+    {
+      "path": "gsmtfwk62.dll",
+      "bytes": 217088,
+      "sha256": "96a1f10c2f590de8bcf94b16f70fee19a3ee574faaf9e320db292381d7ba21f3"
+    },
+    {
+      "path": "gstext62.dll",
+      "bytes": 235008,
+      "sha256": "d1c480d1cf39af5d64ef34c9b24c48ff41e099fa9de0ddc7313626de6ac08dfa"
+    },
+    {
+      "path": "lbmultilang.dll",
+      "bytes": 21504,
+      "sha256": "ef2965d94d65230c9ea2a7a9f08da23a1b85ebb3b63d81a36b5309d73b1c10a7"
+    },
+    {
+      "path": "Ltdis15u.dll",
+      "bytes": 261264,
+      "sha256": "3681fab4feb65f5167131f811122d3e28e2d854230c1aeb47337c9744c0919b6"
+    },
+    {
+      "path": "Ltefx15u.dll",
+      "bytes": 257168,
+      "sha256": "2afdf56214e2120342cb7fd9e5c2f81c25e89fdf9a9d6d7d611e332a8084c09f"
+    },
+    {
+      "path": "Ltfil15u.dll",
+      "bytes": 150672,
+      "sha256": "8c49b839f8272b72ced55bdf3b5f12c59b56b974403c089c31aa24f9211856ad"
+    },
+    {
+      "path": "Ltimgclr15u.dll",
+      "bytes": 212112,
+      "sha256": "64d0a6451eb7710f108e85accd90dbd7be42a93939e6749c9a53ee1f1c2d4030"
+    },
+    {
+      "path": "Ltimgcor15u.dll",
+      "bytes": 302224,
+      "sha256": "3b306206560389231bf2c928914f893fe258dd512739c5ccf7197f0846803163"
+    },
+    {
+      "path": "Ltimgefx15u.dll",
+      "bytes": 216208,
+      "sha256": "0a77dd8b0042c214b923527a7190b14d9f9550172ba497c30882010681223c56"
+    },
+    {
+      "path": "Ltimgutl15u.dll",
+      "bytes": 117904,
+      "sha256": "9fef19bfae8f881c5b91919c24dd8eea30e88da8f39034fc2cb845e6108a7584"
+    },
+    {
+      "path": "Ltkrn15u.dll",
+      "bytes": 482448,
+      "sha256": "4eed2333beb66899129f23843c7fd95adc6360b5b9aeabab9730e588c5467c5b"
+    },
+    {
+      "path": "Lttwn15u.dll",
+      "bytes": 117904,
+      "sha256": "0004c3542187ea56d30b5930bab6adaec6096baa1160e882d22c37a6d4b4fb76"
+    },
+    {
+      "path": "mfc140u.dll",
+      "bytes": 4864080,
+      "sha256": "a7c07cc937b9a58794472010d5c90bc5c3c644b339d42b5917573ecd6bf0615a"
+    },
+    {
+      "path": "msvcp140.dll",
+      "bytes": 450184,
+      "sha256": "2c0a3e328419b3b50b0430f38c6b5882e302177f4b003aba6a0e7e035807043d"
+    },
+    {
+      "path": "rdg77001.dll",
+      "bytes": 49152,
+      "sha256": "b7bf992c0e445261151d7d5c0ec9097b39527cf5420ae74fac5de6cd632f83cf"
+    },
+    {
+      "path": "vcruntime140.dll",
+      "bytes": 90192,
+      "sha256": "bf33857f46e56ea7930c1eea25c5f7175a6aaa3df36bf8301a785e6ca726a0b9"
+    }
+  ],
+  "external_imports": [
+    "advapi32.dll",
+    "api-ms-win-crt-convert-l1-1-0.dll",
+    "api-ms-win-crt-environment-l1-1-0.dll",
+    "api-ms-win-crt-filesystem-l1-1-0.dll",
+    "api-ms-win-crt-heap-l1-1-0.dll",
+    "api-ms-win-crt-locale-l1-1-0.dll",
+    "api-ms-win-crt-math-l1-1-0.dll",
+    "api-ms-win-crt-multibyte-l1-1-0.dll",
+    "api-ms-win-crt-runtime-l1-1-0.dll",
+    "api-ms-win-crt-stdio-l1-1-0.dll",
+    "api-ms-win-crt-string-l1-1-0.dll",
+    "api-ms-win-crt-time-l1-1-0.dll",
+    "api-ms-win-crt-utility-l1-1-0.dll",
+    "comctl32.dll",
+    "comdlg32.dll",
+    "gdi32.dll",
+    "gdiplus.dll",
+    "imm32.dll",
+    "kernel32.dll",
+    "mpr.dll",
+    "msvcp80.dll",
+    "msvcr80.dll",
+    "netapi32.dll",
+    "odbc32.dll",
+    "ole32.dll",
+    "oleacc.dll",
+    "oleaut32.dll",
+    "rpcrt4.dll",
+    "setupapi.dll",
+    "shell32.dll",
+    "shlwapi.dll",
+    "user32.dll",
+    "uxtheme.dll",
+    "version.dll",
+    "winmm.dll",
+    "winspool.drv",
+    "ws2_32.dll",
+    "wsnmp32.dll"
+  ]
+}

@@ -398,6 +398,7 @@ class PatternExplorer(tk.Tk if tk else object):
         ttk.Label(preview_header, text="Vector preview", font=("Segoe UI", 12, "bold")).pack(side="left")
         self.export_button = ttk.Button(preview_header, text="Export SVG preview", command=self.export_current, state="disabled")
         self.export_button.pack(side="right")
+        ttk.Button(preview_header, text="Cut / test…", command=self.open_cut_dialog).pack(side="right", padx=6)
         ttk.Button(preview_header, text="Fit", command=self.fit_preview).pack(side="right", padx=8)
         ttk.Label(right, textvariable=self.preview_notice_var, foreground="#8a4b13", wraplength=620).pack(anchor="w", pady=(0, 5))
         self.canvas = tk.Canvas(right, background="#fafbfc", highlightbackground="#ced4da", highlightthickness=1)
@@ -603,6 +604,17 @@ class PatternExplorer(tk.Tk if tk else object):
             messagebox.showinfo("SVG preview saved", f"Saved a new file:\n{path}\n\nPhysical scale and cutting suitability remain unverified.")
         except (OSError, PatternError, ValueError) as error:
             messagebox.showerror("Export failed", str(error))
+
+    def open_cut_dialog(self) -> None:
+        try:
+            from printing.dialog import CutDialog
+            selected = self.tree.selection()
+            row = self.rows.get(selected[0]) if selected else None
+            label = (f"{row['make'] or ''} {row['model'] or ''} · {year_label(row)}" if row is not None else "Selected pattern")
+            note = warning_for_asset(self.asset_warnings, row["asset_id"]) if row is not None else ""
+            CutDialog(self, pattern=self.pattern, workspace=WORKSPACE, source_label=label, compatibility_note=note)
+        except Exception as error:
+            messagebox.showerror("Cut / test setup", str(error), parent=self)
 
     def close(self) -> None:
         if self.catalog:

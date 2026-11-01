@@ -1,0 +1,4 @@
+# The offline capture gate binds these exact source bytes across checkouts.
+tools/printing/NativeCaptureSink.cs text eol=lf
+tools/printing/NativePlotterBridge.cs text eol=lf
+printing/drivers.json text eol=lf
