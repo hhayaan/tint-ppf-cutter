@@ -1,0 +1,3 @@
+# The final exporter uses Python standard library + the already-installed
+# Microsoft.ACE.OLEDB.12.0 provider via Windows PowerShell 5.1.
+# No third-party Python packages are required.

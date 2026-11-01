@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+analysis/
+exports/
+data/
+.runtime/
+*.mdb
+*.ldb
+*.sqlite
+*.sqlite3
+*.FDU
+*.FDA
+*.fdu
+*.fda
