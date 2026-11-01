@@ -6,10 +6,10 @@ An offline Windows desktop prototype for browsing a vehicle-pattern catalog, pre
 
 ## Set up on another Windows PC
 
-1. Download or clone this repository and extract it to a local folder.
+1. Download the latest project from GitHub, or update your clone. Extract the GitHub project ZIP to a local Windows folder. Find **`start.cmd`**: the folder containing that file is the **project root** used below.
 2. Install **Python 3.11 or newer with Tcl/Tk** from [Python for Windows](https://www.python.org/downloads/windows/). The viewer uses only the Python standard library; no `pip install` step is needed. You can check Tk with `py -3 -m tkinter`, which should open a small demonstration window. See [Python's Tkinter documentation](https://docs.python.org/3/library/tkinter.html).
-3. Obtain **`TintPPF-PatternData-*.zip`** separately from the project owner. The GitHub repository does not contain the catalog or pattern collection.
-4. Extract that ZIP **into the project folder containing `start.cmd`**. The archive starts with `data/`; avoid creating an extra nested project or `data/data` folder.
+3. Download the **four current private files** listed in [Keep the data separate from GitHub](#keep-the-data-separate-from-github) from the owner's private cloud share. GitHub does not contain the pattern dataset or native runtime. **PatternData v2 and NativeRuntime v1 are both current; their versions are independent.**
+4. Extract **both** `TintPPF-PatternData-v2.zip` and `TintPPF-NativeRuntime-v1.zip` directly into that **same project root containing `start.cmd`**. In Windows **Extract All…**, change the suggested destination if it adds a folder named after the ZIP; select the project root itself. The archives already contain `data/` and `.runtime/vendor/`. Do not place or extract either ZIP inside `data/` or `.runtime/vendor/`, and avoid extra `TintPPF-…/` or `data/data/` layers. The `.sha256` files are plain-text checksums: keep them with the downloads; do not extract them.
 5. Double-click **`start.cmd`**. It locates Python with Tk and opens Pattern Explorer. Choose a catalog entry to preview it; use the filters to narrow the list.
 
 After extraction, the layout should be:
@@ -20,6 +20,12 @@ tint-ppf-cutter/
   app.py
   README.md
   tools/
+  .runtime/
+    vendor/
+      gsfwkcut62.dll
+      drvcut/
+        graphtec.dll
+        ... other driver DLLs
   data/
     catalog.sqlite
     bundle-manifest.json
@@ -28,13 +34,13 @@ tint-ppf-cutter/
       ... .FDA and .FDU files
 ```
 
-Allow at least **4 GB of free disk space** for downloading and extracting the data. The extracted catalog and pattern cache occupy about 1.2 GB. Keep the data on a local disk and finish extracting before opening the app.
+Allow at least **4 GB of free disk space** for downloading and extracting the files. The extracted catalog and pattern cache occupy about 1.2 GB. Finish extracting both ZIPs to the local project folder before opening the app.
 
 Browsing requires Python with Tk and the separate dataset. Codex, REA, Ghidra, Microsoft Access/ACE, and the original Film Designs installation are not viewer requirements. Cutting additionally needs the inspected native driver runtime and Windows .NET Framework 4; see the cutting setup below.
 
 ## Prepare a cutting test
 
-1. Supply the matching Film Designs `ClientV2` DLL folder, or extract the separately shared **`TintPPF-NativeRuntime-v1.zip`** into this project. The private ZIP creates `.runtime/vendor/`; it contains 58 DLLs and is about 11.6 MB. Keep this optional runtime outside GitHub, alongside the separate pattern-data handoff.
+1. Confirm that the setup above created **`.runtime/vendor/gsfwkcut62.dll`** and **`.runtime/vendor/drvcut/`**. The current `TintPPF-NativeRuntime-v1.zip` contains 58 DLLs; its `v1` is independent of the pattern dataset's `v2`. Alternatively, select a matching existing Film Designs `ClientV2` DLL folder in the cutting dialog.
 2. Open **Cut / test…**. The last saved model/setup is restored; the initial choice is the owner's confirmed **Graphtec FC9000-140**. Changing a profile does not contact a device. A standalone 20 × 20 mm test rectangle is available even without pattern data.
 3. Select **File** for the first check. Choose the intended paths, prepare the job, and inspect millimeter dimensions, actual native coordinate bounds, model, and generated commands. Save to a new output filename.
 4. Leave supported FDA/FDU patterns at **Original pattern size (automatic)** and 100%. Custom source calibration and **Resize this job** are optional controls under **Advanced size / quality**. They apply to the current job only.
@@ -46,7 +52,7 @@ For an oversized layout, enable **Manual paneling** and enter both media width a
 
 For the FC9000-140, this backend generates HP-GL. The owner has not confirmed the cutter's current COMMAND setting; check it against HP-GL before the trial. Direct X/Y axes are used for the verified profile. USB can use an appropriate installed Windows queue or the separate advanced generic device-path primitive. Neither establishes universal manufacturer USB or Data Link support, and no TCP port is guessed. [Graphtec's OPS662 driver](https://www.graphteccorp.com/download/ops662_w64/) and [Data Link connection guidance](https://www.graphteccorp.com/download/gps_w/) describe distinct routes.
 
-The native adapter reuses the original model drivers in a separate x86 process and captures their output in memory. It is not a fully independent reimplementation. Runtime files are version/hash checked, and the inspected version's x86 Visual C++ runtime prerequisites still apply. REA and Ghidra are development tools, not cutting requirements. See [cutting implementation and remaining gaps](docs/printing.md) and the [per-profile capture report](docs/printing-native-verification.json).
+The native adapter reuses the original model drivers in a separate x86 process and captures their output in memory. It is not a fully independent reimplementation. Cutting requires Windows .NET Framework 4 and the inspected DLLs' x86 Visual C++ prerequisites. In particular, the legacy imaging DLLs require a compatible **Visual C++ 2005 x86 runtime** (`Microsoft.VC80.CRT 8.0.50608.0`); a modern Visual C++ redistributable alone does not satisfy that dependency. Runtime files are version/hash checked. REA and Ghidra are development tools, not cutting requirements. See [cutting implementation and remaining gaps](docs/printing.md) and the [per-profile capture report](docs/printing-native-verification.json).
 
 ## Verify the separate dataset
 
@@ -85,11 +91,31 @@ The initial 2026-11-01 local dataset contains **143,321 catalog listings** and *
 
 ## Keep the data separate from GitHub
 
-Push the source, launcher, documentation, tests, and tools. Share the private data ZIP separately through Proton Drive or another file-sharing service. GitHub recommends file sharing for large databases and blocks individual regular Git files over 100 MiB: [GitHub's large-file guidance](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github).
+The GitHub project contains source, launcher, documentation, tests and tools. The owner uploads **exactly these four files** from `distribution/private/` to the private cloud share; the recipient downloads the same four files:
+
+| Current file | Purpose | Size | Owner's source path |
+| --- | --- | ---: | --- |
+| `TintPPF-PatternData-v2.zip` | Catalog, pattern files, compatibility notes and verification manifest | About 715.7 MB | `distribution/private/TintPPF-PatternData-v2.zip` |
+| `TintPPF-PatternData-v2.sha256` | SHA-256 checksum for the pattern-data ZIP | 93 bytes | `distribution/private/TintPPF-PatternData-v2.sha256` |
+| `TintPPF-NativeRuntime-v1.zip` | Matching native cutting runtime, including model driver DLLs | About 11.6 MB | `distribution/private/TintPPF-NativeRuntime-v1.zip` |
+| `TintPPF-NativeRuntime-v1.zip.sha256` | SHA-256 checksum for the native-runtime ZIP | 96 bytes | `distribution/private/TintPPF-NativeRuntime-v1.zip.sha256` |
+
+**NativeRuntime v1 is the current runtime, not an obsolete PatternData v1 bundle.** The dataset and runtime are versioned independently. Only the two ZIPs are extracted, both into the same project root containing `start.cmd`; the two checksum files stay with the downloads. Do not upload extracted verification folders or local investigation receipts.
+
+To optionally verify the downloads before extraction, open PowerShell in their download folder:
+
+```powershell
+Get-FileHash -Algorithm SHA256 -LiteralPath ".\TintPPF-PatternData-v2.zip"
+Get-FileHash -Algorithm SHA256 -LiteralPath ".\TintPPF-NativeRuntime-v1.zip"
+```
+
+Compare each displayed `Hash` with the 64-character hash in its corresponding `.sha256` text file; letter case does not matter. Keep the ZIPs and checksum files together for download verification.
+
+Share these files privately through Proton Drive or another file-sharing service. GitHub recommends file sharing for large databases and blocks individual regular Git files over 100 MiB: [GitHub's large-file guidance](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github).
 
 `.gitignore` excludes `data/`, `analysis/`, `exports/`, `distribution/`, databases, pattern files, archives, local credentials, environments, and vendor/build binaries. Existing tracked history has also been checked for these files. Ignore rules do not remove a file that was already committed, so review `git status` and the staged file list before publishing.
 
-The data ZIP is generated locally under `distribution/private/`, which is ignored. Send the ZIP and its checksum file privately; keep private download links and passwords out of the public README. Proton Drive supports downloadable share links: [Proton sharing instructions](https://proton.me/support/drive-shareable-link). No upload or Git publishing is performed by the packaging tools.
+`distribution/private/` is ignored. Keep private download links and passwords out of the public README. Proton Drive supports downloadable share links: [Proton sharing instructions](https://proton.me/support/drive-shareable-link). No upload or Git publishing is performed by the packaging tools.
 
 ## Developer commands
 
