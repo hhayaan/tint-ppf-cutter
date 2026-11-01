@@ -8,8 +8,8 @@ An offline Windows desktop prototype for browsing a vehicle-pattern catalog, pre
 
 1. Download the latest project from GitHub, or update your clone. Extract the GitHub project ZIP to a local Windows folder. Find **`start.cmd`**: the folder containing that file is the **project root** used below.
 2. Install **Python 3.11 or newer with Tcl/Tk** from [Python for Windows](https://www.python.org/downloads/windows/). The viewer uses only the Python standard library; no `pip install` step is needed. You can check Tk with `py -3 -m tkinter`, which should open a small demonstration window. See [Python's Tkinter documentation](https://docs.python.org/3/library/tkinter.html).
-3. Download the **four current private files** listed in [Keep the data separate from GitHub](#keep-the-data-separate-from-github) from the owner's private cloud share. GitHub does not contain the pattern dataset or native runtime. **PatternData v2 and NativeRuntime v1 are both current; their versions are independent.**
-4. Extract **both** `TintPPF-PatternData-v2.zip` and `TintPPF-NativeRuntime-v1.zip` directly into that **same project root containing `start.cmd`**. In Windows **Extract All…**, change the suggested destination if it adds a folder named after the ZIP; select the project root itself. The archives already contain `data/` and `.runtime/vendor/`. Do not place or extract either ZIP inside `data/` or `.runtime/vendor/`, and avoid extra `TintPPF-…/` or `data/data/` layers. The `.sha256` files are plain-text checksums: keep them with the downloads; do not extract them.
+3. Go to the **[latest release on GitHub](https://github.com/hhayaan/tint-ppf-cutter/releases/latest)**. Under **Assets**, download the **PatternData ZIP**, the **NativeRuntime ZIP**, and their two matching **`.sha256` checksum files**. These are separate downloads: cloning the repository or downloading its source ZIP does not include them. See [Release downloads](#release-downloads) for the filename patterns.
+4. Extract **both downloaded ZIPs** directly into that **same project root containing `start.cmd`**. In Windows **Extract All…**, change the suggested destination if it adds a folder named after the ZIP; select the project root itself. The archives already contain `data/` and `.runtime/vendor/`. Do not place or extract either ZIP inside `data/` or `.runtime/vendor/`, and avoid extra `TintPPF-…/` or `data/data/` layers. The `.sha256` files are plain-text checksums: keep them with the downloads; do not extract them.
 5. Double-click **`start.cmd`**. It locates Python with Tk and opens Pattern Explorer. Choose a catalog entry to preview it; use the filters to narrow the list.
 
 After extraction, the layout should be:
@@ -40,7 +40,7 @@ Browsing requires Python with Tk and the separate dataset. Codex, REA, Ghidra, M
 
 ## Prepare a cutting test
 
-1. Confirm that the setup above created **`.runtime/vendor/gsfwkcut62.dll`** and **`.runtime/vendor/drvcut/`**. The current `TintPPF-NativeRuntime-v1.zip` contains 58 DLLs; its `v1` is independent of the pattern dataset's `v2`. Alternatively, select a matching existing Film Designs `ClientV2` DLL folder in the cutting dialog.
+1. Confirm that extracting the **NativeRuntime ZIP from the [latest GitHub release](https://github.com/hhayaan/tint-ppf-cutter/releases/latest)** created **`.runtime/vendor/gsfwkcut62.dll`** and **`.runtime/vendor/drvcut/`**. Alternatively, select a matching existing Film Designs `ClientV2` DLL folder in the cutting dialog.
 2. Open **Cut / test…**. The last saved model/setup is restored; the initial choice is the owner's confirmed **Graphtec FC9000-140**. Changing a profile does not contact a device. A standalone 20 × 20 mm test rectangle is available even without pattern data.
 3. Select **File** for the first check. Choose the intended paths, prepare the job, and inspect millimeter dimensions, actual native coordinate bounds, model, and generated commands. Save to a new output filename.
 4. Leave supported FDA/FDU patterns at **Original pattern size (automatic)** and 100%. Custom source calibration and **Resize this job** are optional controls under **Advanced size / quality**. They apply to the current job only.
@@ -89,33 +89,33 @@ Importing an SVG into another program can help compare its outline visually. SVG
 
 The initial 2026-11-01 local dataset contains **143,321 catalog listings** and **48,177 pattern files**, plus **100 compatibility warnings**. Listings can share a geometry asset. All files were copied and SHA-256 checked; the catalog was compared against its native export. The parser structurally supports **47,834 files** and marks **343 files** as partial. Preserving every raw file and rendering every drawing feature are separate milestones.
 
-## Keep the data separate from GitHub
+## Release downloads
 
-The GitHub project contains source, launcher, documentation, tests and tools. The owner uploads **exactly these four files** from `distribution/private/` to the private cloud share; the recipient downloads the same four files:
+Get the required bundles from **Assets** on the **[latest release on GitHub](https://github.com/hhayaan/tint-ppf-cutter/releases/latest)**. Download these four files; `*` below represents the version included in that release:
 
-| Current file | Purpose | Size | Owner's source path |
-| --- | --- | ---: | --- |
-| `TintPPF-PatternData-v2.zip` | Catalog, pattern files, compatibility notes and verification manifest | About 715.7 MB | `distribution/private/TintPPF-PatternData-v2.zip` |
-| `TintPPF-PatternData-v2.sha256` | SHA-256 checksum for the pattern-data ZIP | 93 bytes | `distribution/private/TintPPF-PatternData-v2.sha256` |
-| `TintPPF-NativeRuntime-v1.zip` | Matching native cutting runtime, including model driver DLLs | About 11.6 MB | `distribution/private/TintPPF-NativeRuntime-v1.zip` |
-| `TintPPF-NativeRuntime-v1.zip.sha256` | SHA-256 checksum for the native-runtime ZIP | 96 bytes | `distribution/private/TintPPF-NativeRuntime-v1.zip.sha256` |
+| Release asset | Purpose |
+| --- | --- |
+| `TintPPF-PatternData-*.zip` | Catalog, pattern files, compatibility notes and verification manifest |
+| `TintPPF-PatternData-*.sha256` | SHA-256 checksum for the pattern-data ZIP |
+| `TintPPF-NativeRuntime-*.zip` | Matching native cutting runtime, including model driver DLLs |
+| `TintPPF-NativeRuntime-*.zip.sha256` | SHA-256 checksum for the native-runtime ZIP |
 
-**NativeRuntime v1 is the current runtime, not an obsolete PatternData v1 bundle.** The dataset and runtime are versioned independently. Only the two ZIPs are extracted, both into the same project root containing `start.cmd`; the two checksum files stay with the downloads. Do not upload extracted verification folders or local investigation receipts.
+The dataset and runtime are versioned independently, so their version numbers may differ. Use the assets attached to the latest release. Only the two ZIPs are extracted, both into the same project root containing `start.cmd`; the two checksum files stay with the downloads. GitHub's automatically generated **Source code (zip)** and **Source code (tar.gz)** downloads contain the project source, not these bundles.
 
 To optionally verify the downloads before extraction, open PowerShell in their download folder:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath ".\TintPPF-PatternData-v2.zip"
-Get-FileHash -Algorithm SHA256 -LiteralPath ".\TintPPF-NativeRuntime-v1.zip"
+Get-FileHash -Algorithm SHA256 -Path ".\TintPPF-PatternData-*.zip"
+Get-FileHash -Algorithm SHA256 -Path ".\TintPPF-NativeRuntime-*.zip"
 ```
 
 Compare each displayed `Hash` with the 64-character hash in its corresponding `.sha256` text file; letter case does not matter. Keep the ZIPs and checksum files together for download verification.
 
-Share these files privately through Proton Drive or another file-sharing service. GitHub recommends file sharing for large databases and blocks individual regular Git files over 100 MiB: [GitHub's large-file guidance](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github).
+The repository contains source, launcher, documentation, tests and tools. Bundles are distributed as release assets rather than committed to Git history. See [GitHub's large-file guidance](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github).
 
 `.gitignore` excludes `data/`, `analysis/`, `exports/`, `distribution/`, databases, pattern files, archives, local credentials, environments, and vendor/build binaries. Existing tracked history has also been checked for these files. Ignore rules do not remove a file that was already committed, so review `git status` and the staged file list before publishing.
 
-`distribution/private/` is ignored. Keep private download links and passwords out of the public README. Proton Drive supports downloadable share links: [Proton sharing instructions](https://proton.me/support/drive-shareable-link). No upload or Git publishing is performed by the packaging tools.
+For maintainers, the prepared release assets are in ignored `distribution/private/`. Attach the two ZIPs and their matching checksum files to the GitHub release; exclude extracted verification folders and local investigation receipts. The packaging tools do not upload files or publish releases.
 
 ## Developer commands
 
