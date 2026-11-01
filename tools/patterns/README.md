@@ -1,15 +1,19 @@
 # FDA/FDU inspection and SVG preview
 
-`fvd_pattern.py` reads the installed pattern cache without loading vendor code,
+`fvd_pattern.py` reads the supplied local pattern cache without loading vendor code,
 attaching to a process, or modifying the source. It uses only Python's standard
 library. Outputs must be outside the source directory.
 
 ```powershell
-python tools\patterns\fvd_pattern.py inspect "C:\FilmVinylDesigns\ClientV2\Files\PATTERN.FDU" --points
-python tools\patterns\fvd_pattern.py export-svg "C:\FilmVinylDesigns\ClientV2\Files\PATTERN.FDU" "C:\Dev\tint-ppf-cutter\analysis\pattern-previews\pattern.svg" --json "C:\Dev\tint-ppf-cutter\analysis\pattern-previews\pattern.json"
-python tools\patterns\fvd_pattern.py scan "C:\FilmVinylDesigns\ClientV2\Files" "C:\Dev\tint-ppf-cutter\analysis\pattern-validation.json"
+python tools\patterns\fvd_pattern.py inspect "data\patterns\PATTERN.FDU" --points
+python tools\patterns\fvd_pattern.py export-svg "data\patterns\PATTERN.FDU" "exports\pattern.svg" --json "exports\pattern.json"
+python tools\patterns\fvd_pattern.py scan "data\patterns" "analysis\pattern-validation.json"
 python -m unittest discover -s tools\patterns -p "test_*.py" -v
 ```
+
+Run these from the project root after extracting the separate data ZIP. Replace
+`PATTERN.FDU` with an existing FDA/FDU filename. Ordinary viewer use is described
+in the root README; this CLI does not submit jobs to hardware.
 
 The parser recognizes the observed 18-byte serializer prefixes (versions 23 and
 30) and walks records with a little-endian `<IIH` header: record ID, payload byte

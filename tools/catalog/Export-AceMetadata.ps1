@@ -3,8 +3,10 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory
 )
 $ErrorActionPreference = 'Stop'
+$workspaceRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$snapshotRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'analysis\snapshots')) + [IO.Path]::DirectorySeparatorChar
 $snapshot = (Resolve-Path -LiteralPath $SnapshotPath).ProviderPath
-if (-not $snapshot.StartsWith('C:\Dev\tint-ppf-cutter\analysis\snapshots\', [StringComparison]::OrdinalIgnoreCase)) {
+if (-not $snapshot.StartsWith($snapshotRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Only workspace snapshots are supported.'
 }
 $source = @'

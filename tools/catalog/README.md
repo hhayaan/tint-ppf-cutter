@@ -1,5 +1,12 @@
 # Read-only catalog migration
 
+These are optional reconstruction and source-audit tools. A friend running the
+viewer with the separate data ZIP does not need Microsoft ACE, original MDB
+snapshots, or the original installation. See the root README for normal setup.
+Use the linker's `--files data\patterns` option for the independent copy instead
+of its original-installation default. Snapshot paths follow the checkout's
+location; the PowerShell tools do not require a fixed development directory.
+
 The final reader uses Microsoft ACE, not the experimental pure-Python page parser. Native ACE comparisons caught shifted text values in that parser, so it is not a supported export route.
 
 Requirements: Python 3.11 or later, Windows PowerShell 5.1, and the already-installed 64-bit `Microsoft.ACE.OLEDB.12.0` provider. No third-party Python dependencies are required.

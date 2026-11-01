@@ -1,12 +1,15 @@
 param(
-    [string]$SnapshotPath = 'C:\Dev\tint-ppf-cutter\analysis\snapshots\fvd.mdb',
-    [string]$OutputPath = 'C:\Dev\tint-ppf-cutter\analysis\catalog-schema.json'
+    [string]$SnapshotPath,
+    [string]$OutputPath
 )
 
 $ErrorActionPreference = 'Stop'
+$workspaceRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+if ([string]::IsNullOrWhiteSpace($SnapshotPath)) { $SnapshotPath = Join-Path $workspaceRoot 'analysis\snapshots\fvd.mdb' }
+if ([string]::IsNullOrWhiteSpace($OutputPath)) { $OutputPath = Join-Path $workspaceRoot 'analysis\catalog-schema.json' }
 Add-Type -AssemblyName System.Data
 $snapshot = (Resolve-Path -LiteralPath $SnapshotPath).ProviderPath
-$snapshotRoot = 'C:\Dev\tint-ppf-cutter\analysis\snapshots\'
+$snapshotRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'analysis\snapshots')) + [IO.Path]::DirectorySeparatorChar
 if (-not $snapshot.StartsWith($snapshotRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'This script only reads workspace snapshots, never the live vendor database.'
 }

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import re
 import sqlite3
+import sys
 import uuid
 
 try:
@@ -22,10 +23,37 @@ from tools.patterns.fvd_pattern import Pattern, PatternError, VectorPath, export
 
 
 WORKSPACE = Path(__file__).resolve().parent
-DEFAULT_CATALOG = WORKSPACE / "analysis" / "catalog.sqlite"
-DEFAULT_PATTERN_ROOT = (WORKSPACE / "data" / "patterns" if (WORKSPACE / "data" / "patterns").is_dir()
-                        else Path(r"C:\FilmVinylDesigns\ClientV2\Files"))
 PAGE_SIZE = 100
+DATA_SETUP_HELP = ("Pattern data is not installed.\n"
+                   "Extract the separate data ZIP into this project folder.\n"
+                   "Expected: data/catalog.sqlite and data/patterns/\n"
+                   "See README.md for the handoff and setup steps.")
+
+
+class MissingDataError(FileNotFoundError):
+    pass
+
+
+def default_data_paths(workspace: Path) -> tuple[Path, Path]:
+    """Portable handoff layout, with an existing development catalog fallback."""
+    portable_catalog = workspace / "data" / "catalog.sqlite"
+    development_catalog = workspace / "analysis" / "catalog.sqlite"
+    catalog = (portable_catalog if portable_catalog.is_file() or not development_catalog.is_file()
+               else development_catalog)
+    return catalog, workspace / "data" / "patterns"
+
+
+def require_data_sources(catalog: Path, pattern_root: Path) -> None:
+    missing = []
+    if not catalog.is_file():
+        missing.append(f"Catalog not found: {catalog}")
+    if not pattern_root.is_dir():
+        missing.append(f"Pattern folder not found: {pattern_root}")
+    if missing:
+        raise MissingDataError("\n".join(missing))
+
+
+DEFAULT_CATALOG, DEFAULT_PATTERN_ROOT = default_data_paths(WORKSPACE)
 
 
 def load_asset_warnings(root: Path) -> dict[str, str]:
@@ -408,9 +436,11 @@ class PatternExplorer(tk.Tk if tk else object):
             self.catalog.close()
             self.catalog = None
         try:
-            self.catalog = Catalog(Path(self.catalog_var.get()))
-            self.local_names = local_pattern_names(Path(self.root_var.get()))
-            self.asset_warnings = load_asset_warnings(Path(self.root_var.get()))
+            catalog_path, pattern_root = Path(self.catalog_var.get()), Path(self.root_var.get())
+            require_data_sources(catalog_path, pattern_root)
+            self.catalog = Catalog(catalog_path)
+            self.local_names = local_pattern_names(pattern_root)
+            self.asset_warnings = load_asset_warnings(pattern_root)
             self.make_box["values"] = [""] + self.catalog.choices("make")
             self.model_box["values"] = [""] + self.catalog.choices("model", self.make_var.get())
             self.type_names = self.catalog.type_names()
@@ -424,9 +454,14 @@ class PatternExplorer(tk.Tk if tk else object):
                 self.catalog.close()
                 self.catalog = None
             self.asset_warnings = {}
-            self.status_var.set(f"Catalog unavailable: {error}")
             self.tree.delete(*self.tree.get_children())
-            self.clear_preview("Choose a valid recovered catalog to begin.")
+            if isinstance(error, MissingDataError):
+                self.status_var.set("Pattern data missing — extract the separate data ZIP; see README.md.")
+                self.clear_preview(DATA_SETUP_HELP)
+                self.set_details(str(error))
+            else:
+                self.status_var.set(f"Catalog unavailable: {error}")
+                self.clear_preview("Choose a valid recovered catalog to begin.")
 
     def make_changed(self, _event: object = None) -> None:
         self.model_var.set("")
@@ -580,8 +615,10 @@ def main() -> None:
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
     parser.add_argument("--pattern-root", type=Path, default=DEFAULT_PATTERN_ROOT)
     args = parser.parse_args()
+    if sys.version_info < (3, 11):
+        parser.error("Python 3.11 or newer with Tcl/Tk is required; see README.md.")
     if tk is None:
-        parser.error("This Python build lacks Tkinter. Install Python with the Tcl/Tk component enabled, then relaunch start.cmd.")
+        parser.error("This Python build lacks Tkinter. Install Python 3.11+ with Tcl/Tk enabled, then relaunch start.cmd; see README.md.")
     PatternExplorer(args.catalog, args.pattern_root).mainloop()
 
 

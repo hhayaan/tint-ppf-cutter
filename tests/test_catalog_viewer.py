@@ -8,7 +8,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 
-from app import Catalog, Filters, export_preview, has_local_file, load_asset_warnings, local_pattern_names, safe_pattern_path, sample_path, warning_for_asset
+from app import Catalog, DATA_SETUP_HELP, Filters, MissingDataError, default_data_paths, export_preview, has_local_file, load_asset_warnings, local_pattern_names, require_data_sources, safe_pattern_path, sample_path, warning_for_asset
 from tools.patterns.fvd_pattern import PatternError, VectorPath
 
 
@@ -128,6 +128,39 @@ class WarningMetadataTests(unittest.TestCase):
                     (root / "warnings.json").write_text(text, encoding="utf-8")
                     with self.assertRaisesRegex(ValueError, "Invalid warnings.json"):
                         load_asset_warnings(root)
+
+
+class PortableDataTests(unittest.TestCase):
+    def test_portable_catalog_takes_priority_over_development_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "data").mkdir()
+            (root / "analysis").mkdir()
+            (root / "data" / "catalog.sqlite").touch()
+            (root / "analysis" / "catalog.sqlite").touch()
+            self.assertEqual(default_data_paths(root), (root / "data" / "catalog.sqlite", root / "data" / "patterns"))
+
+    def test_development_catalog_fallback_keeps_portable_pattern_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "analysis").mkdir()
+            (root / "analysis" / "catalog.sqlite").touch()
+            self.assertEqual(default_data_paths(root), (root / "analysis" / "catalog.sqlite", root / "data" / "patterns"))
+
+    def test_fresh_clone_defaults_do_not_use_original_installation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            catalog, patterns = default_data_paths(root)
+            self.assertEqual((catalog, patterns), (root / "data" / "catalog.sqlite", root / "data" / "patterns"))
+            with self.assertRaises(MissingDataError) as context:
+                require_data_sources(catalog, patterns)
+            self.assertIn(str(catalog), str(context.exception))
+            self.assertIn(str(patterns), str(context.exception))
+            self.assertIn("separate data ZIP", DATA_SETUP_HELP)
+            self.assertIn("README.md", DATA_SETUP_HELP)
+            patterns.mkdir(parents=True)
+            catalog.touch()
+            require_data_sources(catalog, patterns)
 
 
 if __name__ == "__main__":
