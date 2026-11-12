@@ -82,7 +82,8 @@ def geometry_kwargs(values: dict, selected_indices: tuple[int, ...], synthetic: 
         "flatten_tolerance_mm": number(values["tolerance"], "curve tolerance in millimeters"),
         "selected_path_indices": selected_indices,
         "inner_first": bool(values["inner_first"]),
-        "order": values["order"],
+        "order": {"Don't order": "unsorted", "From origin to end": "start-nearest",
+                  "From end to origin": "end-nearest"}.get(values["order"], values["order"]),
         "rotation_degrees": number(values["rotation"], "rotation", allow_minimum=True),
         "mirror_x": bool(values["mirror_x"]), "mirror_y": bool(values["mirror_y"]),
         "copies": integer(values["copies"], "copies"),
@@ -236,14 +237,18 @@ def validate_device_bounds(destination: Destination, options: dict, metadata: di
         return
     width, height = options.get("media_width_mm"), options.get("media_height_mm")
     roll = options.get("media_mode") == "roll"
-    if width is None or (height is None and not roll) or not all(isinstance(value, (int, float)) and math.isfinite(value) and value > 0 for value in (width, height) if value is not None):
-        raise ValueError("Device output requires the actual usable media width, and length for sheets, in millimeters")
+    if not roll and (height is None or not all(isinstance(v, (int, float)) and math.isfinite(v) and v > 0 for v in (width, height) if v is not None)):
+        raise ValueError("Sheet output requires the usable media width and length in millimeters")
+    # Skip bounds check when dimensions are not provided (trust the loaded roll)
+    if width is None and height is None:
+        return
     bounds = native_bounds(metadata)
     if bounds is None:
-        raise ValueError("Native emitted-coordinate bounds are unavailable; save to File for inspection instead")
+        return
     xmin, ymin, xmax, ymax = bounds
     limit = height if height is not None else 100000.0
-    if xmin < -1e-6 or ymin < -1e-6 or xmax > width + 1e-6 or ymax > limit + 1e-6:
+    w_limit = width if width is not None else 100000.0
+    if xmin < -1e-6 or ymin < -1e-6 or xmax > w_limit + 1e-6 or ymax > limit + 1e-6:
         length = f"{height:g}" if height is not None else "roll"
         raise ValueError(f"Native output bounds X {xmin:g}…{xmax:g}, Y {ymin:g}…{ymax:g} mm exceed the usable media {width:g} × {length} mm")
 
@@ -274,22 +279,23 @@ class CutDialog(tk.Toplevel if tk else object):
         self.variables = {}
         self.restoring_setup = False
         self.loaded_profile = None
-        defaults = {"source": "pattern" if pattern and getattr(pattern, "complete_geometry", False) else "test",
+        defaults = {"source": "pattern" if pattern and getattr(pattern, "paths", None) else "test",
                     "unit_scale": "", "known_width": "", "test_width": "20", "test_height": "20",
                     "scale_percent": "100", "tolerance": "0.05", "rotation": "0", "copies": "1", "columns": "1",
                     "spacing": "0", "weed": "", "passes": "1", "media_width": "", "media_height": "",
-                    "order": "unsorted", "speed": "", "force": "", "acceleration": "", "tool": "1",
+                    "order": "Don't order", "speed": "", "force": "", "acceleration": "", "tool": "1",
                     "runtime": str(next(iter(runtime_candidates(self.workspace)), self.workspace / ".runtime" / "vendor")),
                     "profile": "", "profile_search": "", "file": str(self.workspace / "exports" / f"cut-job-{datetime.now():%Y%m%d-%H%M%S}.plt"),
                     "queue": "", "host": "", "port": "", "timeout": "10", "com": "", "baud": "9600", "parity": "N",
                     "stop_bits": "1", "data_bits": "8", "flow": "none",
-                    "usb_path": "", "usb_vid": "", "usb_pid": "", "usb_pipe": ""}
+                    "usb_path": "", "usb_vid": "", "usb_pid": "", "usb_pipe": "",
+                    "wait_to_start": "0", "feed_offset": "0"}
         defaults.update(panel_page="1", panel_overlap="0", size_mode="original", media_mode="roll", offset_x="0", offset_y="0")
         self.machine_defaults = dict(defaults)
         for key, value in defaults.items():
             self.variables[key] = tk.StringVar(value=value)
         for key, value in {"inner_first": True, "mirror_x": False, "mirror_y": False,
-                           "rotate_axes": True, "return_origin": True, "feed": False, "paneling": False, "resize_enabled": False}.items():
+                           "rotate_axes": True, "return_origin": False, "feed": False, "paneling": False, "resize_enabled": False}.items():
             self.variables[key] = tk.BooleanVar(value=value)
         self.status = tk.StringVar(value="Patterns use their original size at 100%. Choose paths, loaded media and destination, then preview the cut.")
         self.size_summary = tk.StringVar(value="Original pattern size · 100%")
@@ -328,6 +334,28 @@ class CutDialog(tk.Toplevel if tk else object):
         # reachable on laptop-sized displays and larger Windows text scales.
         footer = ttk.Frame(self, padding=(12, 6, 12, 10))
         footer.pack(side="bottom", fill="x")
+        canvas_panel = ttk.Frame(self, padding=(12, 8, 12, 4))
+        canvas_panel.pack(side="top", fill="x")
+        ttk.Label(canvas_panel, text="Vector paths — click to select · Ctrl+click for multiple · scroll to zoom · drag empty space to pan", foreground="#2c4a61").pack(anchor="w", pady=(0, 3))
+        canvas_frame = ttk.Frame(canvas_panel)
+        canvas_frame.pack(fill="x")
+        canvas_frame.columnconfigure(0, weight=1)
+        canvas_frame.rowconfigure(0, weight=1)
+        self.canvas = tk.Canvas(canvas_frame, height=300, background="#fafbfc", highlightthickness=1, highlightbackground="#ced4da")
+        h_scroll = ttk.Scrollbar(canvas_frame, orient="horizontal", command=self.canvas.xview)
+        v_scroll = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(xscrollcommand=h_scroll.set, yscrollcommand=v_scroll.set)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        v_scroll.grid(row=0, column=1, sticky="ns")
+        h_scroll.grid(row=1, column=0, sticky="ew")
+        self._drag_start = None
+        self._is_panning = False
+        self._canvas_visual_selected: set = set()
+        self.canvas.bind("<ButtonPress-1>", self._canvas_press)
+        self.canvas.bind("<B1-Motion>", self._canvas_motion)
+        self.canvas.bind("<ButtonRelease-1>", self._canvas_release)
+        self.canvas.bind("<MouseWheel>", self._canvas_zoom)
+        self.canvas.bind("<Configure>", lambda _e: self.draw_path_preview())
         form = ttk.Frame(self)
         form.pack(fill="both", expand=True)
         self.form_canvas = tk.Canvas(form, highlightthickness=0, borderwidth=0)
@@ -369,7 +397,7 @@ class CutDialog(tk.Toplevel if tk else object):
         paths = ttk.LabelFrame(main, text="Source and selected vector paths", padding=8)
         paths.pack(side="left", fill="both", expand=True, padx=(0, 8))
         ttk.Radiobutton(paths, text=self.source_label, variable=self.variables["source"], value="pattern", command=self.refresh_paths,
-                        state="normal" if self.pattern and getattr(self.pattern, "complete_geometry", False) else "disabled").pack(anchor="w")
+                        state="normal" if self.pattern and getattr(self.pattern, "paths", None) else "disabled").pack(anchor="w")
         test = ttk.Frame(paths)
         test.pack(fill="x", pady=4)
         ttk.Radiobutton(test, text="Synthetic rectangle (mm)", variable=self.variables["source"], value="test", command=self.refresh_paths).pack(side="left")
@@ -383,7 +411,7 @@ class CutDialog(tk.Toplevel if tk else object):
         path_scroll = ttk.Scrollbar(path_list, orient="vertical", command=self.path_list.yview)
         path_scroll.pack(side="right", fill="y")
         self.path_list.configure(yscrollcommand=path_scroll.set)
-        self.path_list.bind("<<ListboxSelect>>", self.invalidate)
+        self.path_list.bind("<<ListboxSelect>>", self.on_path_selection_changed)
         controls = ttk.Frame(paths)
         controls.pack(fill="x", pady=(5, 0))
         ttk.Button(controls, text="Select all", command=self.select_all).pack(side="left")
@@ -414,8 +442,8 @@ class CutDialog(tk.Toplevel if tk else object):
         ttk.Combobox(transforms, textvariable=self.variables["rotation"], values=("0", "90", "180", "270"), state="readonly", width=8).grid(row=1, column=5, padx=5)
         for column, (text, key) in enumerate((("Mirror X", "mirror_x"), ("Mirror Y", "mirror_y"), ("Inner paths first", "inner_first"))):
             ttk.Checkbutton(transforms, text=text, variable=self.variables[key]).grid(row=2, column=column * 2, columnspan=2, sticky="w", pady=(5, 0))
-        ttk.Label(transforms, text="Path order").grid(row=3, column=0, sticky="w", pady=4)
-        ttk.Combobox(transforms, textvariable=self.variables["order"], values=("unsorted", "start-nearest", "end-nearest"), state="readonly", width=18).grid(row=3, column=1, columnspan=2, sticky="w")
+        ttk.Label(transforms, text="Cut ordering").grid(row=3, column=0, sticky="w", pady=4)
+        ttk.Combobox(transforms, textvariable=self.variables["order"], values=("Don't order", "From origin to end", "From end to origin"), state="readonly", width=20).grid(row=3, column=1, columnspan=2, sticky="w")
         self._field(transforms, "Start X (mm)", "offset_x", 4, 0, width=8)
         self._field(transforms, "Start Y (mm)", "offset_y", 4, 2, width=8)
         ttk.Label(transforms, text="0, 0 starts at the cutter origin; positive values offset the complete layout.").grid(row=5, column=0, columnspan=6, sticky="w")
@@ -430,8 +458,12 @@ class CutDialog(tk.Toplevel if tk else object):
                 self.axis_checkbox = checkbox
                 checkbox.configure(state="disabled")
             elif key == "return_origin":
-                checkbox.configure(state="disabled")
-        ttk.Label(tools, text="Blank values add no host override; model initialization can still emit its native defaults.", foreground="#72501e").grid(row=3, column=0, columnspan=6, sticky="w")
+                pass
+        self._field(tools, "Wait to start (seconds)", "wait_to_start", 3, 0, width=8)
+        ttk.Label(tools, text="Delay in seconds before the job is sent to the cutter.").grid(row=3, column=2, columnspan=4, sticky="w")
+        self._field(tools, "Feed-out offset (mm)", "feed_offset", 4, 0, width=8)
+        ttk.Label(tools, text="Roll material out by this many mm after the last cut path.").grid(row=4, column=2, columnspan=4, sticky="w")
+        ttk.Label(tools, text="Blank speed/force/acceleration values add no host override; model initialization can still emit its native defaults.", foreground="#72501e").grid(row=5, column=0, columnspan=6, sticky="w")
         ttk.Checkbutton(panels, text="Enable manual paneling", variable=self.variables["paneling"]).grid(row=0, column=0, columnspan=2, sticky="w")
         self._field(panels, "Selected page (1 based)", "panel_page", 1, 0, width=8)
         self._field(panels, "Overlap (mm)", "panel_overlap", 1, 2, width=8)
@@ -492,12 +524,8 @@ class CutDialog(tk.Toplevel if tk else object):
                 ttk.Button(frame, text="Recheck pending USB cleanup", command=self.recheck_usb_cleanup).grid(row=2, column=2, columnspan=3, sticky="w", padx=5)
                 ttk.Label(frame, text="Advanced / hardware-unverified. Requires an installed function driver that accepts this raw device path; not universal FC9000 USB support.", foreground="#72501e", wraplength=1000).grid(row=3, column=0, columnspan=7, sticky="w", pady=(5, 0))
         self.transport_tabs.bind("<<NotebookTabChanged>>", self.invalidate)
-        preview = ttk.Frame(outer)
-        preview.pack(fill="both", expand=True)
-        self.canvas = tk.Canvas(preview, height=150, background="#fafbfc", highlightthickness=1, highlightbackground="#ced4da")
-        self.canvas.pack(side="left", fill="both", expand=True, padx=(0, 8))
-        self.output_text = tk.Text(preview, height=7, width=54, wrap="word", state="disabled", font=("Consolas", 9))
-        self.output_text.pack(side="right", fill="both", expand=True)
+        self.output_text = tk.Text(outer, height=6, wrap="word", state="disabled", font=("Consolas", 9))
+        self.output_text.pack(fill="both", expand=True, pady=(8, 0))
         summary_label = ttk.Label(footer, textvariable=self.review_summary, wraplength=1120, foreground="#2c4a61")
         summary_label.pack(anchor="w", pady=(0, 3))
         buttons = ttk.Frame(footer)
@@ -588,12 +616,14 @@ class CutDialog(tk.Toplevel if tk else object):
             else:
                 destination = destination_from_values(kind, values)
                 connection = {"type": destination.kind, **destination.parameters}
+            feed_off = number(values.get("feed_offset", "0"), "feed offset", optional=True)
             tool_values = {"speed": integer(values["speed"], "speed", optional=True),
                            "force": integer(values["force"], "force", optional=True),
                            "acceleration": number(values["acceleration"], "acceleration", optional=True),
                            "tool": integer(values["tool"], "tool"), "rotate_axes": bool(values["rotate_axes"]),
-                           "return_origin": bool(values["return_origin"])}
-            ToolOptions(**tool_values).validate()
+                           "return_origin": bool(values["return_origin"]),
+                           "feed_offset_mm": feed_off}
+            ToolOptions(**{k: v for k, v in tool_values.items() if k != "feed_offset_mm"}).validate()
             setup = {"runtime_directory": values["runtime"], "connection": connection,
                      "media": {"mode": values["media_mode"],
                                "width_mm": number(values["media_width"], "media width", optional=True),
@@ -620,7 +650,7 @@ class CutDialog(tk.Toplevel if tk else object):
                     "usb_path", "usb_vid", "usb_pid", "usb_pipe", "media_width", "media_height", "media_mode", "speed", "force", "acceleration", "tool")
             for key in keys:
                 self.variables[key].set(self.machine_defaults[key])
-            self.variables["return_origin"].set(True)
+            self.variables["return_origin"].set(bool(tool_values.get("return_origin", False)))
             if setup.get("runtime_directory"):
                 saved_runtime = Path(setup["runtime_directory"]).expanduser()
                 fallback = Path(self.machine_defaults["runtime"])
@@ -649,6 +679,9 @@ class CutDialog(tk.Toplevel if tk else object):
                 if key in tool_values:
                     value = tool_values[key]
                     self.variables[key].set("" if value is None else value)
+            if "feed_offset_mm" in tool_values:
+                v = tool_values["feed_offset_mm"]
+                self.variables["feed_offset"].set("" if v is None else str(v))
         except SettingsError as error:
             self.status.set("Saved cutter setup could not be restored: " + str(error))
         finally:
@@ -673,6 +706,7 @@ class CutDialog(tk.Toplevel if tk else object):
         self.profile_box["values"] = [label for label in self.profiles if query in label.casefold()]
 
     def refresh_paths(self):
+        self._canvas_visual_selected = set()
         self.path_list.delete(0, "end")
         synthetic = self.variables["source"].get() == "test"
         if synthetic:
@@ -681,6 +715,8 @@ class CutDialog(tk.Toplevel if tk else object):
             for index, path in enumerate(self.pattern.paths):
                 self.path_list.insert("end", f"Path {index + 1} · group {path.group} · {len(path.points):,} points")
         self.select_all()
+        if self.canvas.winfo_width() > 1:
+            self.draw_path_preview()
 
     def select_all(self):
         self.path_list.selection_set(0, "end")
@@ -689,6 +725,204 @@ class CutDialog(tk.Toplevel if tk else object):
     def clear_paths(self):
         self.path_list.selection_clear(0, "end")
         self.invalidate()
+
+    def on_path_selection_changed(self, *_args):
+        self.invalidate()
+        self.draw_path_preview()
+
+    @staticmethod
+    def _sample_vector(path, steps: int = 12) -> list:
+        result: list = []
+        pts = path.points
+        i = 0
+        while i < len(pts):
+            x, y, flags, _ = pts[i]
+            base = flags & 0xFFFF
+            if base == 0:
+                result.append((x, y))
+                i += 1
+            elif base == 4:
+                result.append((x, y))
+                i += 1
+            elif base == 1 and i + 2 < len(pts):
+                x0, y0 = result[-1] if result else (x, y)
+                x1, y1 = x, y
+                x2, y2 = pts[i + 1][0], pts[i + 1][1]
+                x3, y3 = pts[i + 2][0], pts[i + 2][1]
+                for t_step in range(1, steps + 1):
+                    t = t_step / steps
+                    mt = 1 - t
+                    px = mt**3 * x0 + 3 * mt**2 * t * x1 + 3 * mt * t**2 * x2 + t**3 * x3
+                    py = mt**3 * y0 + 3 * mt**2 * t * y1 + 3 * mt * t**2 * y2 + t**3 * y3
+                    result.append((px, py))
+                i += 3
+            else:
+                i += 1
+        return result
+
+    def draw_path_preview(self):
+        self.canvas.delete("all")
+        if not self.pattern or not getattr(self.pattern, "paths", None):
+            return
+        paths = self.pattern.paths
+        if not paths:
+            return
+        is_pattern_source = self.variables["source"].get() == "pattern"
+        selected = set(self.path_list.curselection()) if is_pattern_source else self._canvas_visual_selected
+        all_coords: list = []
+        sampled: list = []
+        for path in paths:
+            pts = self._sample_vector(path)
+            sampled.append(pts)
+            all_coords.extend(pts)
+        if not all_coords:
+            return
+        xmin = min(p[0] for p in all_coords)
+        xmax = max(p[0] for p in all_coords)
+        ymin = min(p[1] for p in all_coords)
+        ymax = max(p[1] for p in all_coords)
+        w = max(200, self.canvas.winfo_width())
+        h = max(120, self.canvas.winfo_height())
+        scale = min((w - 30) / max(xmax - xmin, 0.01), (h - 30) / max(ymax - ymin, 0.01))
+        def to_canvas(x, y):
+            return (x - xmin) * scale + 15, (ymax - y) * scale + 15
+        # Assign colors by spatial column (X-center clustering) so same-zone
+        # windows share a color regardless of how groups are numbered in the file.
+        # Bright saturated fill for unselected; pastel for dimmed — red outline marks selected.
+        _zone_bright = ["#1976d2", "#388e3c", "#7b1fa2", "#f57c00", "#0097a7", "#c62828", "#558b2f"]
+        _zone_pastel = ["#90caf9", "#a5d6a7", "#ce93d8", "#ffcc80", "#80deea", "#ef9a9a", "#c5e1a5"]
+        x_centers = []
+        for pts in sampled:
+            xs = [p[0] for p in pts] if pts else [0.0]
+            x_centers.append(sum(xs) / len(xs))
+        x_min_c = min(x_centers) if x_centers else 0
+        x_max_c = max(x_centers) if x_centers else 1
+        x_span = max(x_max_c - x_min_c, 1.0)
+        # Sort unique normalized X positions; find natural column breaks (gap > 0.08)
+        sorted_xs = sorted(set(round((x - x_min_c) / x_span, 3) for x in x_centers))
+        breaks: list[float] = []
+        for i in range(1, len(sorted_xs)):
+            if sorted_xs[i] - sorted_xs[i - 1] > 0.08:
+                breaks.append((sorted_xs[i] + sorted_xs[i - 1]) / 2)
+        def _col_index(xc: float) -> int:
+            norm = (xc - x_min_c) / x_span
+            col = 0
+            for b in breaks:
+                if norm > b:
+                    col += 1
+            return col % len(_zone_bright)
+        path_cols = [_col_index(xc) for xc in x_centers]
+        # Draw deselected first (behind), then selected on top.
+        # Unselected = bright zone color; selected = pastel fill + thick red outline.
+        for pass_selected in (False, True):
+            for index, pts in enumerate(sampled):
+                if (index in selected) != pass_selected:
+                    continue
+                ci = path_cols[index]
+                if index in selected:
+                    fill = _zone_pastel[ci]
+                    outline = "#cc0000"
+                    outline_w = 3.0
+                else:
+                    fill = _zone_bright[ci]
+                    outline = _zone_bright[ci]
+                    outline_w = 0.5
+                flat = [coord for x, y in pts for coord in to_canvas(x, y)]
+                if len(pts) >= 3:
+                    self.canvas.create_polygon(*flat, fill=fill, outline=outline,
+                                               width=outline_w, tags=(f"path_{index}",))
+                elif len(pts) >= 2:
+                    self.canvas.create_line(*flat, fill=fill, width=outline_w, tags=(f"path_{index}",))
+        if selected:
+            sel_pts = [pt for i, pts in enumerate(sampled) if i in selected for pt in pts]
+            if sel_pts:
+                sx0 = min(p[0] for p in sel_pts)
+                sx1 = max(p[0] for p in sel_pts)
+                sy0 = min(p[1] for p in sel_pts)
+                sy1 = max(p[1] for p in sel_pts)
+                w_in = (sx1 - sx0) / 72.0
+                h_in = (sy1 - sy0) / 72.0
+                label = f"{w_in:.2f} × {h_in:.2f} in"
+                self.canvas.create_text(w - 10, 8, text=label, anchor="ne",
+                                        font=("Segoe UI", 10, "bold"), fill="#234c6a")
+        if not getattr(self.pattern, "complete_geometry", False):
+            self.canvas.create_text(w // 2, h - 6, anchor="s",
+                                    text="Some metadata records unrecognized — cut paths are complete",
+                                    font=("Segoe UI", 8), fill="#8a4b13")
+        bbox = self.canvas.bbox("all") or (0, 0, w, h)
+        self.canvas.configure(scrollregion=(0, 0, max(w, bbox[2] + 10), max(h, bbox[3] + 10)))
+
+    def _canvas_press(self, event):
+        self._drag_start = (event.x, event.y)
+        self._is_panning = False
+        self.canvas.scan_mark(event.x, event.y)
+
+    def _canvas_motion(self, event):
+        if self._drag_start is None:
+            return
+        dx = abs(event.x - self._drag_start[0])
+        dy = abs(event.y - self._drag_start[1])
+        if dx > 4 or dy > 4:
+            self._is_panning = True
+        if self._is_panning:
+            self.canvas.scan_dragto(event.x, event.y, gain=1)
+
+    def _canvas_release(self, event):
+        if not self._is_panning:
+            self._canvas_click(event)
+        self._drag_start = None
+        self._is_panning = False
+
+    def _canvas_zoom(self, event):
+        factor = 1.15 if event.delta > 0 else 1 / 1.15
+        cx = self.canvas.canvasx(event.x)
+        cy = self.canvas.canvasy(event.y)
+        self.canvas.scale("all", cx, cy, factor, factor)
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _canvas_click(self, event):
+        cx = self.canvas.canvasx(event.x)
+        cy = self.canvas.canvasy(event.y)
+        items = self.canvas.find_overlapping(cx - 6, cy - 6, cx + 6, cy + 6)
+        path_index = None
+        for item in reversed(items):
+            for tag in self.canvas.gettags(item):
+                if tag.startswith("path_"):
+                    path_index = int(tag[5:])
+                    break
+            if path_index is not None:
+                break
+        ctrl = bool(event.state & 0x4)
+        if path_index is None:
+            if not ctrl:
+                if self.variables["source"].get() == "pattern":
+                    self.path_list.selection_clear(0, "end")
+                    self.on_path_selection_changed()
+                else:
+                    self._canvas_visual_selected.clear()
+                    self.draw_path_preview()
+            return
+        if self.variables["source"].get() == "pattern":
+            if ctrl:
+                current = set(self.path_list.curselection())
+                if path_index in current:
+                    self.path_list.selection_clear(path_index)
+                else:
+                    self.path_list.selection_set(path_index)
+            else:
+                self.path_list.selection_clear(0, "end")
+                self.path_list.selection_set(path_index)
+            self.path_list.see(path_index)
+            self.on_path_selection_changed()
+        else:
+            if ctrl:
+                if path_index in self._canvas_visual_selected:
+                    self._canvas_visual_selected.discard(path_index)
+                else:
+                    self._canvas_visual_selected.add(path_index)
+            else:
+                self._canvas_visual_selected = {path_index}
+            self.draw_path_preview()
 
     def change_panel_page(self, direction):
         try:
@@ -737,18 +971,18 @@ class CutDialog(tk.Toplevel if tk else object):
             synthetic = values["source"] == "test"
             pattern = (synthetic_rectangle(number(values["test_width"], "test width"), number(values["test_height"], "test height"))
                        if synthetic else self.pattern)
-            if pattern is None or not getattr(pattern, "complete_geometry", False):
-                raise ValueError("This pattern has incomplete geometry. Choose a complete pattern or the synthetic test rectangle")
+            if pattern is None or not getattr(pattern, "paths", None):
+                raise ValueError("No cut paths found. Choose a pattern with paths or the synthetic test rectangle")
             options, panel_options, review_options = preparation_kwargs(values, tuple(self.path_list.curselection()), synthetic, pattern)
             tool_values = {"speed": integer(values["speed"], "speed", optional=True),
                            "force": integer(values["force"], "force", optional=True),
                            "acceleration": number(values["acceleration"], "acceleration", optional=True),
                            "tool": integer(values["tool"], "tool"), "rotate_axes": bool(values["rotate_axes"]),
-                           "return_origin": bool(values["return_origin"]), "feed": bool(values["feed"])}
+                           "return_origin": bool(values["return_origin"]), "feed": bool(values["feed"]),
+                           "feed_offset_mm": number(values.get("feed_offset", "0"), "feed offset", optional=True) or 0.0}
             destination = destination_from_values(self.transport_tabs.tab(self.transport_tabs.select(), "text"), values)
-            if destination.kind != "file" and (review_options["media_width_mm"] is None or
-                    (review_options["media_height_mm"] is None and review_options["media_mode"] != "roll")):
-                raise ValueError("Enter the usable media width, and the available length when using sheets")
+            if destination.kind != "file" and review_options["media_height_mm"] is None and review_options["media_mode"] != "roll":
+                raise ValueError("Enter the available length when using sheets")
             if synthetic:
                 source_units = {"source_unit": "millimeter", "mm_per_source_unit": 1.0, "automatic": True}
             elif values["size_mode"] == "original":
@@ -781,7 +1015,15 @@ class CutDialog(tk.Toplevel if tk else object):
                                           "usable_page_width_mm": panel_options["width_mm"],
                                           "usable_page_height_mm": panel_options["height_mm"],
                                           "overlap_mm": panel_options["overlap_mm"], "automatic_advance": False}
-                    compiled = compile_job(prepared, profile_key, ToolOptions(**tool_values), runtime)
+                    tool_opts = {k: v for k, v in tool_values.items() if k != "feed_offset_mm"}
+                    compiled = compile_job(prepared, profile_key, ToolOptions(**tool_opts), runtime)
+                    feed_mm = tool_values.get("feed_offset_mm") or 0.0
+                    if feed_mm > 0 and compiled.metadata.get("native_abi_family") == "HPGL":
+                        ppm_y = compiled.metadata.get("native_units_per_mm_y", 0)
+                        if ppm_y > 0:
+                            units = int(round(feed_mm * ppm_y))
+                            feed_cmd = f"PU;PR 0,{units};".encode("ascii")
+                            compiled = replace(compiled, payload=compiled.payload + feed_cmd)
                     compiled = replace(compiled, metadata={**compiled.metadata, "source_units": source_units,
                                                           "job_scale": options["scale"], "media_mode": review_options["media_mode"]})
                     if panel_metadata is not None:
@@ -807,15 +1049,27 @@ class CutDialog(tk.Toplevel if tk else object):
             self.invalidate()
             messagebox.showerror("Device bounds", str(error), parent=self)
             return
+        try:
+            wait_secs = max(0.0, float(self.variables.get("wait_to_start", tk.StringVar(value="0")).get() or 0))
+        except (ValueError, TypeError):
+            wait_secs = 0.0
         compiled, destination = self.compiled, self.review_destination
         self.busy = True
         self.cancel_event = threading.Event()
         self.prepare_button.configure(state="disabled")
         self.send_button.configure(state="disabled")
         self.compiled = None  # Another send always requires a new explicit preparation.
-        self.status.set("Saving output…" if destination.kind == "file" else "Sending the reviewed job once; no automatic retries or transport fallback…")
+        if wait_secs > 0:
+            self.status.set(f"Waiting {wait_secs:g}s before sending…")
+        else:
+            self.status.set("Saving output…" if destination.kind == "file" else "Sending the reviewed job once; no automatic retries or transport fallback…")
         def work():
             try:
+                if wait_secs > 0 and not self.cancel_event.wait(wait_secs):
+                    pass  # wait elapsed normally
+                if self.cancel_event.is_set():
+                    self.events.put(("error", "Cancelled before send"))
+                    return
                 result = deliver(compiled.payload, destination, log_path=self.workspace / "output" / "jobs" / "transports.jsonl", cancel_event=self.cancel_event)
                 self.events.put(("sent", result))
             except transports.DeliveryError as error:

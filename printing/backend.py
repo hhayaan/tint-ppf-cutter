@@ -43,8 +43,6 @@ class ToolOptions:
         for name in ("rotate_axes", "return_origin", "feed"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be a boolean")
-        if not self.return_origin:
-            raise ValueError("End-position continuation is not implemented; return to plotter origin is required")
         if self.feed:
             raise ValueError("An explicit page-feed operation has not yet been validated")
 

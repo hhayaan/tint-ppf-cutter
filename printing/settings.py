@@ -163,11 +163,12 @@ def _setup(value):
 
 
 def _tools(value):
-    _object(value, ("speed", "force", "acceleration", "tool", "rotate_axes", "return_origin"), "tools")
+    _object(value, ("speed", "force", "acceleration", "tool", "rotate_axes", "return_origin", "feed_offset_mm"), "tools")
     result = {}
     for key, item in value.items():
         result[key] = (_boolean(item, "tools." + key) if key in ("rotate_axes", "return_origin") else
                        _number(item, "tools.acceleration", optional=True) if key == "acceleration" else
+                       _number(item, "tools.feed_offset_mm", optional=True) if key == "feed_offset_mm" else
                        _integer(item, "tools." + key, optional=key != "tool"))
     return result
 
